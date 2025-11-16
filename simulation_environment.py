@@ -190,9 +190,7 @@ class SimulationEnvironment:
             print(f"⚠️ 話題生成エラー: {e}")
             return f"{selected_trigger}について", selected_trigger, trigger_type
 
-    def evaluate_relationships(
-        self, logs: List[Dict]
-    ) -> Tuple[Dict, bool, bool, bool]:
+    def evaluate_relationships(self, logs: List[Dict]) -> Tuple[Dict, bool, bool, bool]:
         """
         関係性を評価
 
@@ -213,7 +211,9 @@ class SimulationEnvironment:
         )
 
         # 人間発話のみをカウントして評価可否を判定
-        human_only_logs = [log for log in filtered_logs if log.get("speaker") != "ロボット"]
+        human_only_logs = [
+            log for log in filtered_logs if log.get("speaker") != "ロボット"
+        ]
         if len(human_only_logs) < 3:
             # 人間発話が3未満は評価不可
             return {}, False, False
@@ -284,7 +284,11 @@ class SimulationEnvironment:
         return metrics, is_stable, has_isolated, is_perfect
 
     def should_intervene(
-        self, logs: List[Dict], metrics: Dict, scores: Dict = None, graph: nx.Graph = None
+        self,
+        logs: List[Dict],
+        metrics: Dict,
+        scores: Dict = None,
+        graph: nx.Graph = None,
     ) -> Tuple[bool, Optional[Dict], Optional[str]]:
         """
         介入判定
@@ -298,17 +302,30 @@ class SimulationEnvironment:
         Returns:
             (should_intervene, plan, robot_utterance): 介入判定、介入プラン、ロボット発話
         """
+        # config.yamlから介入モードを読み込み
+        intervention_cfg = getattr(self._CFG, "intervention", None)
+        intervention_mode = (
+            getattr(intervention_cfg, "mode", "proposal")
+            if intervention_cfg
+            else "proposal"
+        )
+
         # 不安定三角形または疎外ノードがある場合に介入
         unstable_triads = metrics.get("unstable_triads", 0)
         isolated_nodes = metrics.get("isolated_nodes", [])
 
-        if unstable_triads == 0 and len(isolated_nodes) == 0:
-            # 安定状態 → 介入しない
-            return False, None, None
+        # proposalモードの場合のみ、安定＆孤立なしの場合は介入しない
+        # few_utterancesとrandom_targetは常に介入する
+        if intervention_mode == "proposal":
+            if unstable_triads == 0 and len(isolated_nodes) == 0:
+                # 安定状態 → 介入しない
+                return False, None, None
 
         # scoresとgraphが渡されていない場合は構築（後方互換性のため）
         if scores is None or graph is None:
-            max_history_relation = getattr(self._CFG.env, "max_history_relation", 3) or 3
+            max_history_relation = (
+                getattr(self._CFG.env, "max_history_relation", 3) or 3
+            )
             filtered_logs = filter_logs_by_human_count(
                 logs, max_history_relation, exclude_robot=True
             )
@@ -319,17 +336,11 @@ class SimulationEnvironment:
 
         triangle_scores = self.analyzer.analyze_triangles(graph)
 
-        # config.yamlから介入設定を読み込み
-        intervention_cfg = getattr(self._CFG, "intervention", None)
+        # config.yamlから介入設定を読み込み（モードは上で読み込み済み）
         isolation_threshold = (
             getattr(intervention_cfg, "isolation_threshold", 0.0)
             if intervention_cfg
             else 0.0
-        )
-        intervention_mode = (
-            getattr(intervention_cfg, "mode", "proposal")
-            if intervention_cfg
-            else "proposal"
         )
 
         # InterventionPlannerで介入計画（past_utterancesを渡してエピソード内で共有）
@@ -405,6 +416,7 @@ class SimulationEnvironment:
         edge_score_history = []
         positive_ratio_history = []
         intervention_improvements = []
+        intervention_reversals = []  # 反転判定（-から+への変化）
         consecutive_stable_count = 0
         consecutive_perfect_count = 0  # 完璧状態が連続した回数（早期終了条件用）
         consecutive_unstable_count = 0
@@ -438,29 +450,44 @@ class SimulationEnvironment:
             # stability_check_interval ごとに関係性評価
             if human_utterance_count % self.stability_check_interval == 0:
                 print(f"📊 関係性評価 ({human_utterance_count}発話時点)")
-                
+
                 # 関係性推定用の会話履歴を取得
-                max_history_relation = getattr(self._CFG.env, "max_history_relation", 3) or 3
-                relation_logs = filter_logs_by_human_count(logs, max_history_relation, exclude_robot=True)
+                max_history_relation = (
+                    getattr(self._CFG.env, "max_history_relation", 3) or 3
+                )
+                relation_logs = filter_logs_by_human_count(
+                    logs, max_history_relation, exclude_robot=True
+                )
                 if relation_logs:
                     print(f"    → {len(relation_logs)}件の発話を使用して関係性を推定")
 
-                metrics, is_stable, has_isolated, is_perfect = self.evaluate_relationships(
-                    logs
+                metrics, is_stable, has_isolated, is_perfect = (
+                    self.evaluate_relationships(logs)
                 )
 
                 # 直前のロボット介入の効果を測定
                 if robot_utterances:
                     last_robot = robot_utterances[-1]
-                    if "pre_score" in last_robot and last_robot["pre_score"] is not None:
+                    if (
+                        "pre_score" in last_robot
+                        and last_robot["pre_score"] is not None
+                    ):
                         target_edge = last_robot.get("target_edge")
                         pre_score = last_robot["pre_score"]
                         edges = metrics.get("edges", {})
-                        post_score = edges.get(target_edge) or edges.get((target_edge[1], target_edge[0]))
+                        post_score = edges.get(target_edge) or edges.get(
+                            (target_edge[1], target_edge[0])
+                        )
                         if post_score is not None:
                             improvement = post_score - pre_score
                             intervention_improvements.append(improvement)
-                            print(f"  📈 介入効果: {target_edge[0]}-{target_edge[1]} = {pre_score:+.1f} → {post_score:+.1f} (変化: {improvement:+.1f})")
+                            # 反転判定（-から+への変化）
+                            is_reversal = pre_score < 0 and post_score > 0
+                            intervention_reversals.append(is_reversal)
+                            reversal_mark = " 🔄反転" if is_reversal else ""
+                            print(
+                                f"  📈 介入効果: {target_edge[0]}-{target_edge[1]} = {pre_score:+.1f} → {post_score:+.1f} (変化: {improvement:+.1f}){reversal_mark}"
+                            )
                             # 測定済みなのでフラグを削除
                             del last_robot["pre_score"]
                             del last_robot["target_edge"]
@@ -526,56 +553,60 @@ class SimulationEnvironment:
                         )
                         early_termination = True
                         break
-                elif is_stable:
-                    # 安定だが完璧ではない（孤立ノードあり）
-                    consecutive_perfect_count = 0
-                    consecutive_unstable_count = 0
-                    print(f"  安定状態維持（孤立ノードあり）\n")
                 else:
-                    # 不安定
+                    # 完璧ではない（不安定 or 孤立ノードあり）
                     consecutive_perfect_count = 0
-                    consecutive_unstable_count += 1
-                    # 連続不安定回数の最大値を更新
-                    consecutive_unstable_max = max(
-                        consecutive_unstable_max, consecutive_unstable_count
-                    )
 
-                    # 介入判定（graphとscoresを渡して重複計算を防止）
-                    graph = nx.Graph()
-                    for (a, b), score in edges.items():
-                        graph.add_edge(a, b, score=score)
-                    should_intervene, plan, robot_utterance = self.should_intervene(
-                        logs, metrics, scores=edges, graph=graph
-                    )
+                    if is_stable:
+                        # 安定だが孤立ノードあり
+                        consecutive_unstable_count = 0
+                        print(f"  安定状態維持（孤立ノードあり）")
+                    else:
+                        # 不安定
+                        consecutive_unstable_count += 1
+                        # 連続不安定回数の最大値を更新
+                        consecutive_unstable_max = max(
+                            consecutive_unstable_max, consecutive_unstable_count
+                        )
 
-                    if should_intervene and robot_utterance:
-                        intervention_count += 1
-                        print(f"\n🤖 ロボット介入 ({intervention_count}回目)")
-                        print(f"  介入タイプ: {plan.get('type', '不明')}")
-                        print(f"  発話: {robot_utterance}")
+                # 介入判定（完璧でない場合は常に判定、完璧でもfew_utterances/random_targetは介入）
+                graph = nx.Graph()
+                for (a, b), score in edges.items():
+                    graph.add_edge(a, b, score=score)
+                should_intervene, plan, robot_utterance = self.should_intervene(
+                    logs, metrics, scores=edges, graph=graph
+                )
 
-                        # 介入対象エッジの介入前スコアを記録
-                        target_edge = plan.get("edge")
-                        pre_intervention_score = None
-                        if target_edge and edges:
-                            # エッジは (A, B) または (B, A) の可能性があるので両方チェック
-                            pre_intervention_score = edges.get(
-                                target_edge
-                            ) or edges.get((target_edge[1], target_edge[0]))
-                            if pre_intervention_score is not None:
-                                print(f"  介入対象エッジ: {target_edge[0]}-{target_edge[1]} (介入前: {pre_intervention_score:+.1f})")
+                if should_intervene and robot_utterance:
+                    intervention_count += 1
+                    print(f"\n🤖 ロボット介入 ({intervention_count}回目)")
+                    print(f"  介入タイプ: {plan.get('type', '不明')}")
+                    print(f"  発話: {robot_utterance}")
 
-                        robot_entry = {
-                            "speaker": "ロボット",
-                            "utterance": robot_utterance,
-                            "plan": plan,
-                            "pre_score": pre_intervention_score,  # 次の関係性推定時に使用
-                            "target_edge": target_edge,
-                        }
-                        logs.append(robot_entry)
-                        robot_utterances.append(robot_entry)
+                    # 介入対象エッジの介入前スコアを記録
+                    target_edge = plan.get("edge")
+                    pre_intervention_score = None
+                    if target_edge and edges:
+                        # エッジは (A, B) または (B, A) の可能性があるので両方チェック
+                        pre_intervention_score = edges.get(target_edge) or edges.get(
+                            (target_edge[1], target_edge[0])
+                        )
+                        if pre_intervention_score is not None:
+                            print(
+                                f"  介入対象エッジ: {target_edge[0]}-{target_edge[1]} (介入前: {pre_intervention_score:+.1f})"
+                            )
 
-        # 終了時刻
+                    robot_entry = {
+                        "speaker": "ロボット",
+                        "utterance": robot_utterance,
+                        "plan": plan,
+                        "pre_score": pre_intervention_score,  # 次の関係性推定時に使用
+                        "target_edge": target_edge,
+                    }
+                    logs.append(robot_entry)
+                    robot_utterances.append(robot_entry)
+
+                print()  # 空行を追加        # 終了時刻
         end_time = datetime.now()
         duration = (end_time - start_time).total_seconds()
 
@@ -617,6 +648,17 @@ class SimulationEnvironment:
             remaining_utterances = self.max_human_utterances - human_utterance_count
             # 残りの推定回数（stability_check_intervalごとに1回）
             remaining_checks = remaining_utterances // self.stability_check_interval
+
+            # few_utterancesとrandom_targetモードでは、早期終了後も介入があったとカウント
+            intervention_cfg = getattr(self._CFG, "intervention", None)
+            intervention_mode = (
+                getattr(intervention_cfg, "mode", "proposal")
+                if intervention_cfg
+                else "proposal"
+            )
+            if intervention_mode in ("few_utterances", "random_target"):
+                intervention_count += remaining_checks
+
             # 総推定回数と総安定回数
             total_checks = num_checks + remaining_checks
             total_stable_checks = stable_count_in_checks + remaining_checks
@@ -651,6 +693,7 @@ class SimulationEnvironment:
             else 0.0
         )
         intervention_success_rate = 0.0
+        intervention_reversal_rate = 0.0
         avg_improvement_per_intervention = 0.0
         if intervention_improvements:
             successful_interventions = sum(
@@ -661,6 +704,10 @@ class SimulationEnvironment:
             )
             avg_improvement_per_intervention = sum(intervention_improvements) / len(
                 intervention_improvements
+            )
+        if intervention_reversals:
+            intervention_reversal_rate = sum(intervention_reversals) / len(
+                intervention_reversals
             )
         intervention_frequency = (
             intervention_count / human_utterance_count
@@ -698,6 +745,12 @@ class SimulationEnvironment:
         print(f"  切り替わり回数: {oscillation_count}回")
         print(f"  連続不安定最大: {consecutive_unstable_max}回")
 
+        # 初回から完璧だったかを判定（介入機会がなかった）
+        was_perfect_from_start = (
+            first_perfect_utterance == self.stability_check_interval
+            and early_termination
+        )
+
         # 統計を返す
         stats = {
             "episode_id": episode_id,
@@ -707,6 +760,7 @@ class SimulationEnvironment:
             "human_utterance_count": human_utterance_count,
             "robot_utterance_count": intervention_count,
             "early_termination": early_termination,
+            "was_perfect_from_start": was_perfect_from_start,
             "final_stable": final_stable,
             "final_unstable_triads": final_metrics.get("unstable_triads", 0),
             "final_isolated_nodes": final_metrics.get("isolated_nodes", []),
@@ -726,6 +780,7 @@ class SimulationEnvironment:
             "avg_edge_score": avg_edge_score,
             "avg_positive_ratio": avg_positive_ratio,
             "intervention_success_rate": intervention_success_rate,
+            "intervention_reversal_rate": intervention_reversal_rate,
             "avg_improvement_per_intervention": avg_improvement_per_intervention,
             "intervention_frequency": intervention_frequency,
             "stable_rate_per_intervention": stable_rate_per_intervention,

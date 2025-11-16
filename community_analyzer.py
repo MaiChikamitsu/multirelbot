@@ -206,7 +206,7 @@ class CommunityAnalyzer:
                 ema_scores[key] = x_t
                 if self.use_ema:
                     print(
-                        f"🔢 α計算: {key}, session={session_utterance}, past={total_past}, α=1.00 (初回)"
+                        f"🔢 α=1.00 (初回)"
                     )
                     print(f"🔁 EMA初期化: {key} = {x_t:+.1f}")
             else:

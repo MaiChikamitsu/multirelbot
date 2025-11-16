@@ -152,10 +152,15 @@ class InterventionPlanner:
 
         # --- ランダム対象に固定フレーズ ---
         if self.mode == "random_target" and session_logs:
-            participants = list({log["speaker"] for log in session_logs})
-            target = random.choice(participants)
-            print(f"🤖 ランダム対象: {target}さん")
-            return {"type": "random_target", "target": target}
+            # ロボットを除外した参加者リスト
+            participants = list({log["speaker"] for log in session_logs if log.get("speaker") != "ロボット"})
+            if participants:
+                target = random.choice(participants)
+                print(f"🤖 ランダム対象: {target}さん")
+                return {"type": "random_target", "target": target}
+            else:
+                # 参加者がいない場合（通常は起こらない）
+                return None
 
         # Step 1: 孤立検出
         isolated = self.detect_structural_isolation()

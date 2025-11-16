@@ -6,7 +6,6 @@
 
 例:
     python run_simulation.py --num-episodes 10
-    python run_simulation.py --num-episodes 20 --output results/sim_20250113
 """
 
 import argparse
@@ -128,6 +127,9 @@ def calculate_statistics(all_stats: List[Dict]) -> Dict:
     avg_intervention_success_rate = sum(
         s.get("intervention_success_rate", 0.0) for s in all_stats
     ) / len(all_stats)
+    avg_intervention_reversal_rate = sum(
+        s.get("intervention_reversal_rate", 0.0) for s in all_stats
+    ) / len(all_stats)
     avg_improvement_per_intervention = sum(
         s.get("avg_improvement_per_intervention", 0.0) for s in all_stats
     ) / len(all_stats)
@@ -202,6 +204,7 @@ def calculate_statistics(all_stats: List[Dict]) -> Dict:
         "avg_positive_ratio": avg_positive_ratio,
         # 介入効果指標
         "avg_intervention_success_rate": avg_intervention_success_rate,
+        "avg_intervention_reversal_rate": avg_intervention_reversal_rate,
         "avg_improvement_per_intervention": avg_improvement_per_intervention,
         "avg_intervention_frequency": avg_intervention_frequency,
         "avg_stable_rate_per_intervention": avg_stable_rate_per_intervention,
@@ -379,7 +382,8 @@ def print_summary(stats: Dict):
     print(f"平均正エッジ割合: {stats['avg_positive_ratio']*100:.1f}%")
 
     print(f"\n【介入効果】")
-    print(f"介入成功率: {stats['avg_intervention_success_rate']*100:.1f}%")
+    print(f"介入成功率（改善率）: {stats['avg_intervention_success_rate']*100:.1f}%")
+    print(f"介入反転率（-から+）: {stats['avg_intervention_reversal_rate']*100:.1f}%")
     print(f"介入あたり平均改善度: {stats['avg_improvement_per_intervention']:+.3f}")
     print(f"介入頻度: {stats['avg_intervention_frequency']:.2f}")
     print(f"1介入あたりの安定評価回数: {stats['avg_stable_rate_per_intervention']:.2f}")
@@ -450,10 +454,10 @@ def main():
         try:
             stats = env.run_episode(total_episode_count)
 
-            # ロボット介入がなかったエピソードはスキップ
-            if stats["robot_utterance_count"] == 0 and stats["early_termination"]:
+            # 初回から完璧（介入機会なし）だったエピソードはスキップ
+            if stats.get("was_perfect_from_start", False):
                 print(
-                    f"\n⏭️  エピソード {total_episode_count} はロボット介入なしで早期終了したため、統計から除外します\n"
+                    f"\n⏭️  エピソード {total_episode_count} は初回から完璧（介入機会なし）のため、統計から除外します\n"
                 )
                 continue
 

@@ -95,7 +95,7 @@ env:
   include_robot: true
   intervention_max_history: 9 # 介入判定・ロボット発話LLMへの会話履歴（人間発話数。その間のロボット発話も含む）
   max_history_human: 12 # 人間LLMへの会話履歴（人間発話数。その間のロボット発話も含む）
-  max_history_relation: 9 # 関係性LLMへの会話履歴（人間発話数。その間のロボット発話も含む）
+  max_history_relation: 6 # 関係性LLMへの会話履歴（人間発話数。その間のロボット発話も含む）
   reward_backend: "context_llm"
   debug: true
   start_relation_check_after_utterances: 3 # 何発話後から関係性推定を開始するか
@@ -155,7 +155,7 @@ pepper:
 
 # 介入戦略設定
 intervention:
-  mode: "proposal" # 介入モード ("proposal": グラフ構造ベース、"few_utterances": 発話量少ない人、"random_target": ランダム)
+  mode: "few_utterances" # 介入モード ("proposal": グラフ構造ベース、"few_utterances": ただのLLM、"random_target": ランダム)
   isolation_threshold: 0.0 # 孤立判定のスコア閾値（これ未満の関係しか持たないと孤立とみなす）
   temperature: 1.0 # 介入発話生成時のLLM温度パラメータ
 

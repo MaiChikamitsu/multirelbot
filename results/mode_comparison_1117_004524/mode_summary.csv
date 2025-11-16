@@ -1,0 +1,4 @@
+mode,num_episodes,avg_stability_rate,avg_perfection_rate,avg_isolation_occurrence_rate,avg_robot_utterance_count,avg_first_stable_utterance,avg_first_perfect_utterance,avg_oscillation_count,avg_consecutive_unstable_max,avg_edge_score,avg_positive_ratio,avg_intervention_success_rate,avg_intervention_reversal_rate,avg_improvement_per_intervention,avg_intervention_frequency,early_termination_count,early_termination_rate
+proposal,2,0.4,0.36666666666666664,0.43333333333333335,9.5,30.0,31.5,1.0,8.0,-0.07810596793734736,0.4319444444444444,0.5576923076923077,0.16025641025641024,0.10894105735519982,0.26944444444444443,2,1.0
+few_utterances,2,0.7666666666666666,0.6666666666666666,0.3214285714285714,14.0,6.0,16.5,2.0,2.5,0.0071007529059665606,0.6279761904761905,0.0,0.0,0.0,0.625,2,1.0
+random_target,2,0.4666666666666667,0.3666666666666667,0.47777777777777775,14.5,13.5,24.0,3.0,5.5,-0.03567793614129519,0.4666666666666667,0.0,0.0,0.0,0.42592592592592593,1,0.5
