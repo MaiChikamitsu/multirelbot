@@ -12,9 +12,6 @@ _CFG = config.get_config()
 
 
 class InterventionPlanner:
-    # 過去のロボット発話を保存するリスト（全モード共通）
-    past_utterances: List[str] = []
-
     def __init__(
         self,
         graph: nx.Graph,
@@ -22,6 +19,7 @@ class InterventionPlanner:
         isolation_threshold: float = 0.0,
         mode: str = "proposal",
         num_participants: int = 3,
+        past_utterances: Optional[List[str]] = None,
     ):
         """
         :param graph: NetworkXグラフ。ノードは人物、エッジは関係性スコア（-1〜1）を持つ
@@ -29,12 +27,16 @@ class InterventionPlanner:
         :param isolation_threshold: 孤立判定のスコア閾値（これ未満の関係しか持たないと孤立とみなす）
         :param mode: 介入モード ("proposal", "few_utterances", "random_target")
         :param num_participants: 参加者数 (3 or 4)
+        :param past_utterances: 過去のロボット発話リスト（エピソード内で共有）
         """
         self.graph = graph
         self.triangle_scores = triangle_scores
         self.theta_iso = isolation_threshold
         self.mode = mode  # "proposal", "few_utterances", "random_target"
         self.num_participants = num_participants
+        # 過去のロボット発話を保存するリスト
+        # 引数で渡された場合はそれを使用（エピソード内で共有）
+        self.past_utterances: List[str] = past_utterances if past_utterances is not None else []
 
     def detect_structural_isolation(self) -> Optional[str]:
         """

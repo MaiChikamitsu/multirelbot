@@ -47,39 +47,116 @@ class SimulationEnvironment:
         self.analyzer = CommunityAnalyzer()
 
         # 話題生成用の既使用地雷リスト
-        self.used_triggers = []
+        self.used_triggers_all_common = []  # 全員共通地雷の既使用リスト
+        self.used_triggers_two_person = []  # 2人地雷の既使用リスト
 
-    def generate_topic(self) -> Tuple[str, Optional[str]]:
+        # 地雷タイプごとのカウンタ
+        self.all_common_trigger_count = 0
+        self.two_person_trigger_count = 0
+
+        # 全員共通地雷と2人地雷を分類
+        self._classify_triggers()
+
+    def _classify_triggers(self):
+        """地雷を全員共通と2人地雷に分類"""
+        all_triggers_dict = {}  # {trigger: [personas]}
+
+        for persona, triggers in self.persona_triggers.items():
+            for trigger in triggers:
+                if trigger not in all_triggers_dict:
+                    all_triggers_dict[trigger] = []
+                all_triggers_dict[trigger].append(persona)
+
+        # 全員共通地雷と2人地雷に分類
+        self.all_common_triggers = []
+        self.two_person_triggers = []
+
+        for trigger, personas in all_triggers_dict.items():
+            if len(personas) == len(self.personas):
+                # 全員が持っている地雷
+                self.all_common_triggers.append(trigger)
+            elif len(personas) == 2:
+                # 2人だけが持っている地雷
+                self.two_person_triggers.append(trigger)
+
+        print(f"📋 全員共通地雷: {len(self.all_common_triggers)}個")
+        print(f"📋 2人地雷: {len(self.two_person_triggers)}個")
+
+    def generate_topic(
+        self, prefer_type: Optional[str] = None
+    ) -> Tuple[str, Optional[str], Optional[str]]:
         """
         話題を生成
 
+        Args:
+            prefer_type: "all_common" または "two_person" で地雷タイプを指定
+
         Returns:
-            (topic, topic_trigger): 話題とトリガーとなった地雷
+            (topic, topic_trigger, trigger_type): 話題、トリガーとなった地雷、地雷タイプ
         """
-        # 全地雷からランダムに1つ選択（既に使用した地雷は除外）
-        all_triggers = set()
-        for triggers in self.persona_triggers.values():
-            all_triggers.update(triggers)
+        selected_trigger = None
+        trigger_type = None
 
-        available_triggers = list(all_triggers - set(self.used_triggers))
+        # 地雷タイプ選択
+        if prefer_type == "all_common":
+            # 全員共通地雷から選択
+            available = list(
+                set(self.all_common_triggers) - set(self.used_triggers_all_common)
+            )
+            if not available:
+                # 全て使い切ったらリセット
+                self.used_triggers_all_common = []
+                available = self.all_common_triggers.copy()
 
-        if not available_triggers:
-            # 全て使い切ったらリセット
-            self.used_triggers = []
-            available_triggers = list(all_triggers)
+            if available:
+                selected_trigger = random.choice(available)
+                self.used_triggers_all_common.append(selected_trigger)
+                trigger_type = "all_common"
+        elif prefer_type == "two_person":
+            # 2人地雷から選択
+            available = list(
+                set(self.two_person_triggers) - set(self.used_triggers_two_person)
+            )
+            if not available:
+                # 全て使い切ったらリセット
+                self.used_triggers_two_person = []
+                available = self.two_person_triggers.copy()
 
-        if not available_triggers:
-            return "自由な話題", None
+            if available:
+                selected_trigger = random.choice(available)
+                self.used_triggers_two_person.append(selected_trigger)
+                trigger_type = "two_person"
 
-        selected_trigger = random.choice(available_triggers)
-        self.used_triggers.append(selected_trigger)
+        # フォールバック: 指定タイプで地雷がない場合は逆を試す
+        if selected_trigger is None:
+            if prefer_type == "all_common":
+                # 全員地雷がない → 2人地雷を試す
+                available = list(
+                    set(self.two_person_triggers) - set(self.used_triggers_two_person)
+                )
+                if available:
+                    selected_trigger = random.choice(available)
+                    self.used_triggers_two_person.append(selected_trigger)
+                    trigger_type = "two_person"
+            elif prefer_type == "two_person":
+                # 2人地雷がない → 全員地雷を試す
+                available = list(
+                    set(self.all_common_triggers) - set(self.used_triggers_all_common)
+                )
+                if available:
+                    selected_trigger = random.choice(available)
+                    self.used_triggers_all_common.append(selected_trigger)
+                    trigger_type = "all_common"
+
+        if selected_trigger is None:
+            return "自由な話題", None, None
 
         # Azure OpenAI で話題生成
         client, deployment = get_azure_chat_completion_client(
             self._CFG.llm, model_type="topic"
         )
         if not client or not deployment:
-            return f"{selected_trigger}について", selected_trigger
+            return f"{selected_trigger}について", selected_trigger, trigger_type
 
         # config.yamlから話題生成プロンプトを読み込み
         topic_cfg = getattr(self._CFG, "topic_manager", None)
@@ -108,12 +185,14 @@ class SimulationEnvironment:
         try:
             res = client.chat.completions.create(**params)
             topic = res.choices[0].message.content.strip()
-            return topic, selected_trigger
+            return topic, selected_trigger, trigger_type
         except Exception as e:
             print(f"⚠️ 話題生成エラー: {e}")
-            return f"{selected_trigger}について", selected_trigger
+            return f"{selected_trigger}について", selected_trigger, trigger_type
 
-    def evaluate_relationships(self, logs: List[Dict]) -> Tuple[Dict, bool, bool]:
+    def evaluate_relationships(
+        self, logs: List[Dict]
+    ) -> Tuple[Dict, bool, bool, bool]:
         """
         関係性を評価
 
@@ -121,7 +200,7 @@ class SimulationEnvironment:
             logs: 会話ログ
 
         Returns:
-            (metrics, is_stable, has_isolated): 関係性メトリクス、安定判定、疎外ノード有無
+            (metrics, is_stable, has_isolated, is_perfect): 関係性メトリクス、安定判定、疎外ノード有無、完璧判定
         """
         # CommunityAnalyzerを使用して関係性を評価（インスタンスを再利用）
         analyzer = self.analyzer
@@ -167,12 +246,20 @@ class SimulationEnvironment:
         triangle_scores = analyzer.analyze_triangles(graph)
 
         # メトリクスを計算
-        metrics = {"edges": scores, "unstable_triads": 0, "isolated_nodes": []}
+        metrics = {
+            "edges": scores,
+            "unstable_triads": 0,
+            "isolated_nodes": [],
+            "all_positive_triads": 0,
+            "total_triads": len(triangle_scores),
+        }
 
-        # 不安定三角形をカウント
+        # 不安定三角形と全正三角形をカウント
         for triangle, (struct, avg_score) in triangle_scores.items():
             if struct in ("---", "++-", "+-+", "-++"):
                 metrics["unstable_triads"] += 1
+            elif struct == "+++":
+                metrics["all_positive_triads"] += 1
 
         # 疎外ノードを検出（全てのエッジが負の値）
         for node in self.personas:
@@ -186,13 +273,15 @@ class SimulationEnvironment:
             if edges and all(edge < 0.0 for edge in edges):
                 metrics["isolated_nodes"].append(node)
 
-        # 安定判定: 不安定三角形数が0 かつ 疎外ノードが存在しない
-        is_stable = (
-            metrics["unstable_triads"] == 0 and len(metrics["isolated_nodes"]) == 0
-        )
+        # 安定判定: 不安定三角形数が0（疎外ノードの有無は問わない）
+        # +++, +--, -+-, --+ は全て安定
+        is_stable = metrics["unstable_triads"] == 0
         has_isolated = len(metrics["isolated_nodes"]) > 0
 
-        return metrics, is_stable, has_isolated
+        # 完璧判定: 全ての三角形が安定 かつ 孤立ノードがない
+        is_perfect = is_stable and not has_isolated
+
+        return metrics, is_stable, has_isolated, is_perfect
 
     def should_intervene(
         self, logs: List[Dict], metrics: Dict, scores: Dict = None, graph: nx.Graph = None
@@ -243,12 +332,13 @@ class SimulationEnvironment:
             else "proposal"
         )
 
-        # InterventionPlannerで介入計画
+        # InterventionPlannerで介入計画（past_utterancesを渡してエピソード内で共有）
         planner = InterventionPlanner(
             graph=graph,
             triangle_scores=triangle_scores,
             isolation_threshold=isolation_threshold,
             mode=intervention_mode,
+            past_utterances=self.past_robot_utterances,
         )
 
         # config.yamlから介入判定用の会話履歴数を読み込み
@@ -286,14 +376,19 @@ class SimulationEnvironment:
         # EMA履歴をリセット（新しいエピソード）
         self.analyzer.reset_ema()
 
+        # ロボットの過去発話をリセット（エピソード開始時）
+        self.past_robot_utterances = []
+
         # 開始時刻
         start_time = datetime.now()
 
-        # 話題を生成
-        topic, topic_trigger = self.generate_topic()
-        print(f"� 話題: {topic}")
+        # 話題を生成（エピソードIDに基づいて地雷タイプを選択）
+        # 偶数エピソード: 全員共通地雷、奇数エピソード: 2人地雷
+        prefer_type = "all_common" if episode_id % 2 == 0 else "two_person"
+        topic, topic_trigger, trigger_type = self.generate_topic(prefer_type)
+        print(f"📖 話題: {topic}")
         if topic_trigger:
-            print(f"  (トリガー: {topic_trigger})")
+            print(f"  (トリガー: {topic_trigger}, タイプ: {trigger_type})")
 
         # 会話ログ
         logs = []
@@ -305,14 +400,19 @@ class SimulationEnvironment:
 
         # 統計用変数
         stability_checks = []
+        perfection_checks = []  # 完璧状態のチェック結果
         isolation_checks = []
         edge_score_history = []
         positive_ratio_history = []
         intervention_improvements = []
         consecutive_stable_count = 0
+        consecutive_perfect_count = 0  # 完璧状態が連続した回数（早期終了条件用）
         consecutive_unstable_count = 0
         consecutive_unstable_max = 0
         first_stable_utterance = None
+        first_perfect_utterance = None  # 初回完璧達成発話数
+        robot_interventions_until_first_stable = None  # 初回安定までのロボット介入回数
+        robot_interventions_until_first_perfect = None  # 初回完璧までのロボット介入回数
         last_stable_state = None
         oscillation_count = 0
         early_termination = False
@@ -345,8 +445,10 @@ class SimulationEnvironment:
                 if relation_logs:
                     print(f"    → {len(relation_logs)}件の発話を使用して関係性を推定")
 
-                metrics, is_stable, has_isolated = self.evaluate_relationships(logs)
-                
+                metrics, is_stable, has_isolated, is_perfect = self.evaluate_relationships(
+                    logs
+                )
+
                 # 直前のロボット介入の効果を測定
                 if robot_utterances:
                     last_robot = robot_utterances[-1]
@@ -366,6 +468,7 @@ class SimulationEnvironment:
                 print(f"  不安定三角形数: {metrics.get('unstable_triads', 0)}")
                 print(f"  疎外ノード: {metrics.get('isolated_nodes', [])}")
                 print(f"  安定状態: {'✅ はい' if is_stable else '❌ いいえ'}")
+                print(f"  完璧状態: {'✅ はい' if is_perfect else '❌ いいえ'}")
 
                 # エッジスコアを表示と記録
                 edges = metrics.get("edges", {})
@@ -383,35 +486,54 @@ class SimulationEnvironment:
                     positive_ratio = positive_edges / len(edges)
                     positive_ratio_history.append(positive_ratio)
 
-                # 安定性と疎外ノード有無を記録
+                # 安定性、完璧性、疎外ノード有無を記録
                 stability_checks.append(is_stable)
+                perfection_checks.append(is_perfect)
                 isolation_checks.append(has_isolated)
 
-                # 初回安定時の発話数を記録
+                # 初回安定時の発話数とロボット介入回数を記録
                 if is_stable and first_stable_utterance is None:
                     first_stable_utterance = human_utterance_count
-                    print(f"  🎯 初回安定達成: {human_utterance_count}発話")
+                    robot_interventions_until_first_stable = intervention_count
+                    print(
+                        f"  🎯 初回安定達成: {human_utterance_count}発話（ロボット介入{intervention_count}回）"
+                    )
+
+                # 初回完璧時の発話数とロボット介入回数を記録
+                if is_perfect and first_perfect_utterance is None:
+                    first_perfect_utterance = human_utterance_count
+                    robot_interventions_until_first_perfect = intervention_count
+                    print(
+                        f"  ⭐ 初回完璧達成: {human_utterance_count}発話（ロボット介入{intervention_count}回）"
+                    )
 
                 # 安定⇔不安定の切り替わりを検出
                 if last_stable_state is not None and last_stable_state != is_stable:
                     oscillation_count += 1
                 last_stable_state = is_stable
 
-                if is_stable:
-                    consecutive_stable_count += 1
+                # 早期終了判定: 完璧状態（安定 + 孤立なし）が2連続
+                if is_perfect:
+                    consecutive_perfect_count += 1
                     consecutive_unstable_count = 0
                     print(
-                        f"  連続安定回数: {consecutive_stable_count}/{self.consecutive_stable_threshold}\n"
+                        f"  連続完璧回数: {consecutive_perfect_count}/{self.consecutive_stable_threshold}\n"
                     )
 
-                    if consecutive_stable_count >= self.consecutive_stable_threshold:
+                    if consecutive_perfect_count >= self.consecutive_stable_threshold:
                         print(
-                            f"\n🎉 {self.consecutive_stable_threshold}回連続で安定 → エピソード終了"
+                            f"\n🎉 {self.consecutive_stable_threshold}回連続で完璧状態 → エピソード終了"
                         )
                         early_termination = True
                         break
+                elif is_stable:
+                    # 安定だが完璧ではない（孤立ノードあり）
+                    consecutive_perfect_count = 0
+                    consecutive_unstable_count = 0
+                    print(f"  安定状態維持（孤立ノードあり）\n")
                 else:
-                    consecutive_stable_count = 0
+                    # 不安定
+                    consecutive_perfect_count = 0
                     consecutive_unstable_count += 1
                     # 連続不安定回数の最大値を更新
                     consecutive_unstable_max = max(
@@ -459,22 +581,27 @@ class SimulationEnvironment:
 
         # 最終評価（早期終了でない場合のみ）
         if not early_termination:
-            final_metrics, final_stable, final_has_isolated = self.evaluate_relationships(
-                logs
-            )
+            (
+                final_metrics,
+                final_stable,
+                final_has_isolated,
+                final_perfect,
+            ) = self.evaluate_relationships(logs)
         else:
             # 早期終了の場合は最後の評価結果を使用
             final_metrics = metrics
             final_stable = is_stable
             final_has_isolated = has_isolated
+            final_perfect = is_perfect
 
         print(f"\n📈 エピソード終了")
         print(f"  総人間発話数: {human_utterance_count}")
         print(f"  ロボット介入回数: {intervention_count}")
         print(
-            f"  早期終了: {'✅ はい (2連続安定)' if early_termination else '❌ いいえ'}"
+            f"  早期終了: {'✅ はい (2連続完璧)' if early_termination else '❌ いいえ'}"
         )
         print(f"  最終状態: {'✅ 安定' if final_stable else '❌ 不安定'}")
+        print(f"  最終完璧: {'✅ はい' if final_perfect else '❌ いいえ'}")
         print(f"  最終不安定三角形数: {final_metrics.get('unstable_triads', 0)}")
         print(f"  最終疎外ノード: {final_metrics.get('isolated_nodes', [])}")
         print(f"  所要時間: {duration:.1f}秒")
@@ -482,7 +609,34 @@ class SimulationEnvironment:
         # 新規指標の計算
         num_checks = len(stability_checks)
         stable_count_in_checks = sum(stability_checks)  # 安定評価回数
-        stability_rate = stable_count_in_checks / num_checks if num_checks > 0 else 0.0
+        perfect_count_in_checks = sum(perfection_checks)  # 完璧評価回数
+
+        # 早期終了した場合、残りの推定も安定/完璧だったと仮定
+        if early_termination:
+            # 残りの発話数
+            remaining_utterances = self.max_human_utterances - human_utterance_count
+            # 残りの推定回数（stability_check_intervalごとに1回）
+            remaining_checks = remaining_utterances // self.stability_check_interval
+            # 総推定回数と総安定回数
+            total_checks = num_checks + remaining_checks
+            total_stable_checks = stable_count_in_checks + remaining_checks
+            total_perfect_checks = perfect_count_in_checks + remaining_checks
+            stability_rate = (
+                total_stable_checks / total_checks if total_checks > 0 else 0.0
+            )
+            perfection_rate = (
+                total_perfect_checks / total_checks if total_checks > 0 else 0.0
+            )
+        else:
+            total_checks = num_checks
+            total_stable_checks = stable_count_in_checks
+            total_perfect_checks = perfect_count_in_checks
+            stability_rate = (
+                stable_count_in_checks / num_checks if num_checks > 0 else 0.0
+            )
+            perfection_rate = (
+                perfect_count_in_checks / num_checks if num_checks > 0 else 0.0
+            )
         isolation_occurrence_rate = (
             sum(isolation_checks) / num_checks if num_checks > 0 else 0.0
         )
@@ -514,22 +668,33 @@ class SimulationEnvironment:
             else 0.0
         )
 
-        # 新規指標: 1介入あたりの安定率と1安定あたりのロボット介入回数
+        # 新規指標: 1介入あたりの安定/完璧評価回数と初回達成までのロボット介入回数
         stable_rate_per_intervention = (
-            stable_count_in_checks / intervention_count
-            if intervention_count > 0
+            total_stable_checks / intervention_count if intervention_count > 0 else 0.0
+        )
+        perfect_rate_per_intervention = (
+            total_perfect_checks / intervention_count if intervention_count > 0 else 0.0
+        )
+        # interventions_per_stable は「初回安定までのロボット介入回数」
+        interventions_per_stable = (
+            robot_interventions_until_first_stable
+            if robot_interventions_until_first_stable is not None
             else 0.0
         )
-        interventions_per_stable = (
-            intervention_count / stable_count_in_checks
-            if stable_count_in_checks > 0
+        # interventions_per_perfect は「初回完璧までのロボット介入回数」
+        interventions_per_perfect = (
+            robot_interventions_until_first_perfect
+            if robot_interventions_until_first_perfect is not None
             else 0.0
         )
 
         print(f"  安定率: {stability_rate:.2%}")
+        print(f"  完璧率: {perfection_rate:.2%}")
         print(f"  疎外発生率: {isolation_occurrence_rate:.2%}")
         if first_stable_utterance:
             print(f"  初回安定達成: {first_stable_utterance}発話")
+        if first_perfect_utterance:
+            print(f"  初回完璧達成: {first_perfect_utterance}発話")
         print(f"  切り替わり回数: {oscillation_count}回")
         print(f"  連続不安定最大: {consecutive_unstable_max}回")
 
@@ -538,6 +703,7 @@ class SimulationEnvironment:
             "episode_id": episode_id,
             "topic": topic,
             "topic_trigger": topic_trigger,
+            "trigger_type": trigger_type,  # 地雷タイプ（all_common or two_person）
             "human_utterance_count": human_utterance_count,
             "robot_utterance_count": intervention_count,
             "early_termination": early_termination,
@@ -549,8 +715,12 @@ class SimulationEnvironment:
             "robot_utterances": robot_utterances,
             # 新規指標
             "stability_rate": stability_rate,
+            "perfection_rate": perfection_rate,
             "isolation_occurrence_rate": isolation_occurrence_rate,
             "first_stable_utterance": first_stable_utterance,
+            "first_perfect_utterance": first_perfect_utterance,
+            "robot_interventions_until_first_stable": robot_interventions_until_first_stable,
+            "robot_interventions_until_first_perfect": robot_interventions_until_first_perfect,
             "oscillation_count": oscillation_count,
             "consecutive_unstable_max": consecutive_unstable_max,
             "avg_edge_score": avg_edge_score,
@@ -559,7 +729,10 @@ class SimulationEnvironment:
             "avg_improvement_per_intervention": avg_improvement_per_intervention,
             "intervention_frequency": intervention_frequency,
             "stable_rate_per_intervention": stable_rate_per_intervention,
+            "perfect_rate_per_intervention": perfect_rate_per_intervention,
             "interventions_per_stable": interventions_per_stable,
+            "interventions_per_perfect": interventions_per_perfect,
+            "final_perfect": final_perfect,
         }
 
         return stats

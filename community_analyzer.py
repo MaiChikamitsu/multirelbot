@@ -89,32 +89,37 @@ def perform_arm_lift_async(self):
 
 
 class CommunityAnalyzer:
-    def __init__(self, decay_factor=1.5):
+    def __init__(self, gamma=0.8, max_history_sessions=3):
         self.graph_count = 0
         self.scores = defaultdict(float)
-        self.history = defaultdict(
-            lambda: deque(maxlen=3)
-        )  # ペアごとの過去発話数（最大3件）
-        # config.yamlからuse_emaとdecay_factorを読み込み
+        # config.yamlからuse_ema、gamma、max_history_sessionsを読み込み
         scorer_cfg = getattr(_CFG, "scorer", None)
         if scorer_cfg:
             self.use_ema = getattr(scorer_cfg, "use_ema", True)
-            self.decay_factor = getattr(scorer_cfg, "decay_factor", decay_factor)
+            self.gamma = getattr(scorer_cfg, "gamma", gamma)
+            self.max_history_sessions = getattr(scorer_cfg, "max_history_sessions", max_history_sessions)
         else:
             self.use_ema = True
-            self.decay_factor = decay_factor
+            self.gamma = gamma
+            self.max_history_sessions = max_history_sessions
+        self.history = defaultdict(
+            lambda: deque(maxlen=self.max_history_sessions)
+        )  # ペアごとの過去発話数
         self.task_queue = queue.Queue()
         self.thread = threading.Thread(target=self._worker, daemon=True)
         self.thread.start()
         # 最後に取得した GPT スコア / EMA スコア（テスト用に外部参照可能）
         self.last_gpt_scores = {}
         self.last_ema_scores = {}
+        # ロボットの過去発話（リアルタイム環境用）
+        self.past_robot_utterances = []
 
     def reset_ema(self):
         """EMA履歴とスコアをリセット（新しいエピソード開始時）"""
         self.scores = defaultdict(float)
-        self.history = defaultdict(lambda: deque(maxlen=3))
-        print("🔄 EMA履歴をリセットしました")
+        self.history = defaultdict(lambda: deque(maxlen=self.max_history_sessions))
+        self.past_robot_utterances = []
+        print("🔄 EMA履歴とロボット発話履歴をリセットしました")
 
     # === ワーカースレッドで非同期に処理 ===
     def _worker(self):
@@ -206,21 +211,23 @@ class CommunityAnalyzer:
                     print(f"🔁 EMA初期化: {key} = {x_t:+.1f}")
             else:
                 if self.use_ema:
-                    # α = d × (分子) / (分母)
-                    # 分子: 現在セッションの min(n_i, n_j)
-                    # 分母: 過去3セッション(t-2, t-1, t)の合計
-                    ratio = (
-                        session_utterance / total_with_current
-                        if total_with_current > 0
-                        else 1.0
-                    )
-                    alpha = max(0.01, min(1.0, self.decay_factor * ratio))
+                    # 過去発話数に時間減衰を適用
+                    weighted_past = 0
+                    for i, count in enumerate(past_utterances):
+                        sessions_ago = len(past_utterances) - i
+                        weight = self.gamma ** sessions_ago
+                        weighted_past += count * weight
+
+                    # αの計算
+                    weighted_total = weighted_past + session_utterance
+                    alpha = min(1.0, session_utterance / weighted_total) if weighted_total > 0 else 1.0
+
                     prev = self.scores[key]
                     updated = alpha * x_t + (1 - alpha) * prev
                     self.scores[key] = updated
                     ema_scores[key] = updated
                     print(
-                        f"🔢 α計算: {key}, session={session_utterance}, past={total_past}, total={total_with_current}, α={alpha:.2f}"
+                        f"🔢 α計算: {key}, session={session_utterance}, weighted_past={weighted_past:.2f}, total={weighted_total:.2f}, α={alpha:.2f}"
                     )
                     print(
                         f"🔁 EMA更新: {key} = {alpha:.2f}×{x_t:+.1f} + {(1-alpha):.2f}×{prev:+.1f} → {updated:+.1f}"
@@ -314,17 +321,20 @@ class CommunityAnalyzer:
         )
         print(f"🧠 GPTスコア (1桁): { {k: round(v,1) for k,v in gpt_scores.items()} }")
         print(
-            f"⚙️ EMA使用: {'✅ 有効' if self.use_ema else '❌ 無効'} (decay_factor={self.decay_factor})"
+            f"⚙️ EMA使用: {'✅ 有効' if self.use_ema else '❌ 無効'} (gamma={self.gamma})"
         )
 
         for (a, b), score in gpt_scores.items():
             key = tuple(sorted([a, b]))
             session_utterance = min(utterance_counts[a], utterance_counts[b])
-            past_utterances = self.history[key]
-            total_past = sum(past_utterances)  # 過去のセッション(t-1, t-2, ...)
-            total_with_current = (
-                total_past + session_utterance
-            )  # 過去3セッション(t, t-1, t-2)の合計
+
+            # 過去の発話数を時間減衰を考慮して合計
+            past_utterances = list(self.history[key])
+            weighted_past = 0
+            for i, count in enumerate(past_utterances):
+                sessions_ago = len(past_utterances) - i
+                weight = self.gamma ** sessions_ago
+                weighted_past += count * weight
 
             x_t = score
             if key not in self.scores:
@@ -333,17 +343,11 @@ class CommunityAnalyzer:
             else:
                 if self.use_ema:
                     # EMA（指数移動平均）を使用
-                    # α = d × min(n_i^(t), n_j^(t)) / Σ(k=t-2 to t) min(n_i^(k), n_j^(k))
-                    ratio = (
-                        session_utterance / total_with_current
-                        if total_with_current > 0
-                        else 1.0
-                    )
-                    alpha = max(
-                        0.01, min(1.0, self.decay_factor * ratio)
-                    )  # decay_factorを掛けて時間減衰を考慮。しかし、αは0.01以上1.0以下に制限
+                    # α = min(n_i^(t), n_j^(t)) / (min(n_i^(t), n_j^(t)) + Σ gamma^(sessions_ago) × min(n_i^(k), n_j^(k)))
+                    weighted_total = weighted_past + session_utterance
+                    alpha = min(1.0, session_utterance / weighted_total) if weighted_total > 0 else 1.0
                     print(
-                        f"🔢 α計算: {key}, session={session_utterance}, past={total_past}, total={total_with_current}, α={alpha:.2f}"
+                        f"🔢 α計算: {key}, session={session_utterance}, weighted_past={weighted_past:.2f}, total={weighted_total:.2f}, α={alpha:.2f}"
                     )
                     prev = self.scores[key]
                     updated = alpha * x_t + (1 - alpha) * prev
@@ -355,7 +359,7 @@ class CommunityAnalyzer:
                     # EMAを使わない場合は直接上書き
                     self.scores[key] = x_t
                     print(f"🔄 スコア更新（EMA無効）: {key} = {x_t:.1f}")
-            # 直近履歴に追加（最大3件）
+            # 履歴に追加（発話数のみ）
             self.history[key].append(session_utterance)
 
         self._draw_graph()
@@ -524,6 +528,7 @@ class CommunityAnalyzer:
             mode=mode,
             num_participants=getattr(_CFG.participants, "num_participants", 3),
             isolation_threshold=getattr(_CFG.intervention, "isolation_threshold", 0.0),
+            past_utterances=self.past_robot_utterances,
         )
         plan = planner.plan_intervention(session_logs=filtered_logs_for_intervention)
 
@@ -598,6 +603,7 @@ class CommunityAnalyzer:
             mode=mode,
             num_participants=getattr(_CFG.participants, "num_participants", 3),
             isolation_threshold=getattr(_CFG.intervention, "isolation_threshold", 0.0),
+            past_utterances=self.past_robot_utterances,
         )
         plan = planner.plan_intervention(session_logs=filtered_logs_for_intervention)
         if not plan:

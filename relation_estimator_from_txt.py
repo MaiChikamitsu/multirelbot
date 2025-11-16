@@ -17,12 +17,13 @@ from azure_clients import get_azure_chat_completion_client, build_chat_completio
 from log_filtering import filter_logs_by_human_count
 
 # ========== 設定 ==========
-INPUT_FILE = "conversation.txt"
-OUTPUT_FILE = "relation_scores.csv"
-LLM_MODEL = None  # Noneの場合はconfig.yamlのrelation_modelを使用
+INPUT_FILE = "estimation_accuracy/conversation.txt"
+OUTPUT_FILE = "estimation_accuracy/relation_scores.csv"
+LLM_MODEL = "gpt-4.1"  # Noneの場合はconfig.yamlのrelation_modelを使用
 USE_EMA = True
-DECAY_FACTOR = 1.5
-MAX_HISTORY_HUMAN = 9  # 人間発話数（その間のロボット発話も含む）
+GAMMA = 0.8  # 時間減衰率（過去の発話の重みを減衰）
+MAX_HISTORY_SESSIONS = 3  # 過去何セッション分の発話数を参照するか
+MAX_HISTORY_HUMAN = 9  # 人間発話数（その間のロボット発話も含む）をどれくらいLLMに入れるか
 DEBUG = True
 NUM_TRIALS = 5  # 各推定を繰り返す回数
 # ==========================
@@ -31,11 +32,13 @@ NUM_TRIALS = 5  # 各推定を繰り返す回数
 class EMAScorer:
     """各試行ごとに独立したEMA状態を保持するクラス"""
 
-    def __init__(self, use_ema: bool = True, decay_factor: float = 1.5):
+    def __init__(self, use_ema: bool = True, gamma: float = 0.8, max_history_sessions: int = 3):
         self.use_ema = use_ema
-        self.decay_factor = decay_factor
+        self.gamma = gamma  # 時間減衰率
+        self.max_history_sessions = max_history_sessions  # 過去何セッション分保持するか
         self.scores = defaultdict(float)  # ペアごとのEMAスコア
-        self.history = defaultdict(lambda: deque(maxlen=3))  # ペアごとの過去発話数
+        self.history = defaultdict(lambda: deque(maxlen=max_history_sessions))  # ペアごとの過去発話数
+        self.prev_utterance_counts = defaultdict(int)  # 前回推定時の各参加者の累積発話数
 
     def update(self, pair: Tuple[str, str], raw_score: float, utterance_counts: Dict[str, int]) -> float:
         """
@@ -44,13 +47,20 @@ class EMAScorer:
         Args:
             pair: ペア（例: ('A', 'B')）
             raw_score: LLMの生スコア
-            utterance_counts: 各参加者の発話数
+            utterance_counts: 各参加者の累積発話数
 
         Returns:
             更新後のスコア（EMA適用済み）
         """
         a, b = pair
-        session_utterance = min(utterance_counts.get(a, 0), utterance_counts.get(b, 0))
+        # このセッション（前回推定から今回推定まで）の発話数を計算
+        current_a = utterance_counts.get(a, 0)
+        current_b = utterance_counts.get(b, 0)
+        prev_a = self.prev_utterance_counts.get(a, 0)
+        prev_b = self.prev_utterance_counts.get(b, 0)
+
+        # セッション内の発話数 = 今回 - 前回（min を取る）
+        session_utterance = min(current_a - prev_a, current_b - prev_b)
 
         if pair not in self.scores:
             # 初回はそのままセット
@@ -59,33 +69,50 @@ class EMAScorer:
             if DEBUG and self.use_ema:
                 print(f"    🔢 α計算: {pair}, session={session_utterance}, past=0, α=1.00 (初回)")
                 print(f"    🔁 EMA初期化: {pair} = {raw_score:+.1f}")
-            return raw_score
+            result = raw_score
         else:
             if self.use_ema:
+                # 過去発話数に時間減衰を適用
                 past_utterances = list(self.history[pair])
-                total_past = sum(past_utterances)
-                total_with_current = total_past + session_utterance
+                weighted_past = 0
+                for i, count in enumerate(past_utterances):
+                    sessions_ago = len(past_utterances) - i
+                    weight = self.gamma ** sessions_ago
+                    weighted_past += count * weight
 
-                ratio = session_utterance / total_with_current if total_with_current > 0 else 1.0
-                alpha = max(0.01, min(1.0, self.decay_factor * ratio))
+                # αの計算
+                weighted_total = weighted_past + session_utterance
+                alpha = min(1.0, session_utterance / weighted_total) if weighted_total > 0 else 1.0
 
                 prev = self.scores[pair]
                 updated = alpha * raw_score + (1 - alpha) * prev
                 self.scores[pair] = updated
 
                 if DEBUG:
-                    print(f"    🔢 α計算: {pair}, session={session_utterance}, past={total_past}, total={total_with_current}, α={alpha:.2f}")
+                    print(f"    🔢 α計算: {pair}, session={session_utterance}, weighted_past={weighted_past:.2f}, total={weighted_total:.2f}, α={alpha:.2f}")
                     print(f"    🔁 EMA更新: {pair} = {alpha:.2f}×{raw_score:+.1f} + {(1-alpha):.2f}×{prev:+.1f} → {updated:+.1f}")
 
                 self.history[pair].append(session_utterance)
-                return updated
+                result = updated
             else:
                 # EMA無効時は生スコアをそのまま使用
                 self.scores[pair] = raw_score
                 self.history[pair].append(session_utterance)
                 if DEBUG:
                     print(f"    🔄 スコア更新（EMA無効）: {pair} = {raw_score:+.1f}")
-                return raw_score
+                result = raw_score
+
+        return result
+
+    def finalize_round(self, utterance_counts: Dict[str, int]):
+        """
+        ラウンド終了時に呼び出し、次回の差分計算のために現在の発話数を記録する
+
+        Args:
+            utterance_counts: 各参加者の累積発話数
+        """
+        for participant, count in utterance_counts.items():
+            self.prev_utterance_counts[participant] = count
 
 
 def parse_conversation_file(file_path: str) -> List[Dict[str, str]]:
@@ -220,11 +247,11 @@ def estimate_relation_once(
 {output_format}
 """
 
-    if DEBUG:
-        print(f"\n  📝 LLMへの入力プロンプト:")
-        print(f"  {'='*60}")
-        print(prompt)
-        print(f"  {'='*60}")
+    # if DEBUG:
+        # print(f"\n  📝 LLMへの入力プロンプト:")
+        # print(f"  {'='*60}")
+        # print(prompt)
+        # print(f"  {'='*60}")
 
     # Azure OpenAI API呼び出し
     client, deployment = get_azure_chat_completion_client(_CFG.llm, model_type="relation")
@@ -244,9 +271,9 @@ def estimate_relation_once(
     res = client.chat.completions.create(**params)
     response_text = res.choices[0].message.content.strip()
 
-    if DEBUG:
-        print(f"\n  🤖 LLM生応答:")
-        print(f"  {response_text}")
+    # if DEBUG:
+    #     print(f"\n  🤖 LLM生応答:")
+    #     print(f"  {response_text}")
 
     # レスポンスをパース
     scores = parse_scores_from_response(response_text, participants)
@@ -346,7 +373,8 @@ def main():
         print(f"  出力ファイル: {OUTPUT_FILE}")
         print(f"  LLMモデル: {LLM_MODEL if LLM_MODEL else '(config.yamlのrelation_model)'}")
         print(f"  EMA使用: {USE_EMA}")
-        print(f"  Decay Factor: {DECAY_FACTOR}")
+        print(f"  Gamma (時間減衰率): {GAMMA}")
+        print(f"  履歴セッション数: {MAX_HISTORY_SESSIONS}")
         print(f"  会話履歴長: {MAX_HISTORY_HUMAN} 人間発話")
         print(f"  試行回数: {NUM_TRIALS}")
 
@@ -379,7 +407,7 @@ def main():
             print(f"  ラウンド {idx}: ログインデックス {end_idx} まで")
 
     # 各試行用のEMAスコアラーを初期化
-    ema_scorers = [EMAScorer(USE_EMA, DECAY_FACTOR) for _ in range(NUM_TRIALS)]
+    ema_scorers = [EMAScorer(USE_EMA, GAMMA, MAX_HISTORY_SESSIONS) for _ in range(NUM_TRIALS)]
 
     # 結果を格納: {pair: [[trial1_round1, trial1_round2, ...], [trial2_round1, ...], ...]}
     results = defaultdict(lambda: [[] for _ in range(NUM_TRIALS)])
@@ -425,6 +453,9 @@ def main():
                     results[pair][trial_idx].append(prev_score)
                     if DEBUG:
                         print(f"    ⚠️ {pair} のスコアが得られませんでした（前回値 {prev_score:+.1f} を使用）")
+
+            # ラウンド終了時に発話数を記録
+            ema_scorer.finalize_round(utterance_counts)
 
         # このラウンドの結果サマリー
         if DEBUG:

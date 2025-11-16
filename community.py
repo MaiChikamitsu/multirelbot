@@ -156,14 +156,14 @@ def parse_scores_from_response(response_text):
 # === セッションごとにスコア更新（時間減衰付きEMA） ===
 
 
-def compute_all_relationship_scores(logs, decay_factor=1.5):
+def compute_all_relationship_scores(logs, gamma=0.9, max_history_sessions=3):
     sessions = split_sessions(logs)
     # print(f"\n📎 総セッション数: {len(sessions)}")
 
     relationship_scores = defaultdict(float)
     interaction_history = defaultdict(
-        lambda: deque(maxlen=3)
-    )  # 各ペアの直近3セッション分の発話数
+        lambda: deque(maxlen=max_history_sessions)
+    )  # 各ペアの過去発話数
 
     for idx, session in enumerate(sessions, 1):
         print(f"\n--- セッション {idx} ---")
@@ -195,10 +195,14 @@ def compute_all_relationship_scores(logs, decay_factor=1.5):
             session_utterance = min(
                 session_utterance_counts[a], session_utterance_counts[b]
             )
-            past_utterances = interaction_history[
-                key
-            ]  # 過去の発話数（直近3セッション分）
-            total_past_utterance = sum(past_utterances)  # 過去の発話数の合計
+
+            # 過去の発話数を時間減衰を考慮して合計
+            past_utterances = list(interaction_history[key])
+            weighted_past = 0
+            for i, count in enumerate(past_utterances):
+                sessions_ago = len(past_utterances) - i
+                weight = gamma ** sessions_ago
+                weighted_past += count * weight
 
             x_t = score  # GPTスコアそのまま使う
 
@@ -206,18 +210,15 @@ def compute_all_relationship_scores(logs, decay_factor=1.5):
                 relationship_scores[key] = x_t  # 初回は代入
                 # print(f"🆕 初期スコア: {key} = {x_t:.2f}")
             else:
-                ratio = session_utterance / (
-                    session_utterance + total_past_utterance
-                )  # 今までの発話数に対するセッション内の発話数の比率
-                alpha = max(
-                    0.01, min(1.0, decay_factor * ratio)
-                )  # decay_factorを掛けて時間減衰を考慮。しかし、αは0.01以上1.0以下に制限
-                # print(f"🔢 α計算 ({a}-{b}): min発話数={session_utterance}, 過去合計={total_past_utterance}, α={alpha:.2f}")
+                # 今回の発話数と時間減衰させた過去の発話数の比率
+                weighted_total = weighted_past + session_utterance
+                alpha = min(1.0, session_utterance / weighted_total) if weighted_total > 0 else 1.0
+                # print(f"🔢 α計算 ({a}-{b}): min発話数={session_utterance}, 減衰過去合計={weighted_past:.2f}, α={alpha:.2f}")
                 prev = relationship_scores[key]
                 updated = alpha * x_t + (1 - alpha) * prev
                 relationship_scores[key] = updated
                 # print(f"🔁 EMA更新: {key} = {alpha:.2f}×{x_t:.2f} + {(1-alpha):.2f}×{prev:.2f} → {updated:.2f}")
-            # 直近履歴に追加（最大3件）
+            # 履歴に追加（発話数のみ）
             interaction_history[key].append(session_utterance)
 
         # print(f"📊 セッション {idx} 終了時の関係スコア（累積）:")

@@ -112,7 +112,8 @@ class ScorerCfg:
 
     backend: Optional[str] = None
     use_ema: Optional[bool] = None
-    decay_factor: Optional[float] = None
+    gamma: Optional[float] = None
+    max_history_sessions: Optional[int] = None
 
 
 @dataclass

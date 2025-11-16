@@ -171,8 +171,9 @@ simulation:
 
 scorer:
   backend: "azure"
-  use_ema: false
-  decay_factor: 1.5
+  use_ema: True
+  gamma: 0.8  # 時間減衰率（過去の発話の重みを減衰）
+  max_history_sessions: 3  # 過去何セッション分の発話数を参照するか
 
 topic_manager:
   enable: true # トピック提案機能を有効化するか

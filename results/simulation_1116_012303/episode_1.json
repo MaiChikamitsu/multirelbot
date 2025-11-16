@@ -1,0 +1,29 @@
+{
+  "episode_id": 1,
+  "topic": "理想のデートプランについて",
+  "topic_trigger": "恋愛",
+  "human_utterance_count": 45,
+  "robot_utterance_count": 15,
+  "early_termination": false,
+  "final_stable": false,
+  "final_unstable_triads": 1,
+  "final_isolated_nodes": [
+    "A",
+    "B",
+    "C"
+  ],
+  "duration_seconds": 71.087413,
+  "stability_rate": 0.0,
+  "isolation_occurrence_rate": 1.0,
+  "first_stable_utterance": null,
+  "robot_interventions_until_first_stable": null,
+  "oscillation_count": 0,
+  "consecutive_unstable_max": 15,
+  "avg_edge_score": -0.6128311567460049,
+  "avg_positive_ratio": 0.04444444444444444,
+  "intervention_success_rate": 0.42857142857142855,
+  "avg_improvement_per_intervention": 0.039930660826861905,
+  "intervention_frequency": 0.3333333333333333,
+  "stable_rate_per_intervention": 0.0,
+  "interventions_per_stable": 0.0
+}
