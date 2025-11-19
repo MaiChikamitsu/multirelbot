@@ -276,19 +276,37 @@ def run_episode_with_mode(
                     target_edge = last_robot.get("target_edge")
                     pre_score = last_robot["pre_score"]
                     edges = metrics.get("edges", {})
-                    post_score = edges.get(target_edge) or edges.get(
-                        (target_edge[1], target_edge[0])
-                    )
-                    if post_score is not None:
+
+                    post_score = None
+                    if target_edge:
+                        # proposalモード: 特定エッジのスコア変化を測定
+                        post_score = edges.get(target_edge) or edges.get(
+                            (target_edge[1], target_edge[0])
+                        )
+                        if post_score is not None:
+                            improvement = post_score - pre_score
+                            intervention_improvements.append(improvement)
+                            # 反転判定（-から+への変化）
+                            is_reversal = pre_score < 0 and post_score > 0
+                            intervention_reversals.append(is_reversal)
+                            reversal_mark = " 🔄反転" if is_reversal else ""
+                            print(
+                                f"  📈 介入効果: {target_edge[0]}-{target_edge[1]} = {pre_score:+.1f} → {post_score:+.1f} (変化: {improvement:+.1f}){reversal_mark}"
+                            )
+                    elif edges:
+                        # few_utterances/random_targetモード: 全エッジ平均の変化を測定
+                        post_score = sum(edges.values()) / len(edges)
                         improvement = post_score - pre_score
                         intervention_improvements.append(improvement)
-                        # 反転判定（-から+への変化）
+                        # 反転判定（平均が-から+への変化）
                         is_reversal = pre_score < 0 and post_score > 0
                         intervention_reversals.append(is_reversal)
                         reversal_mark = " 🔄反転" if is_reversal else ""
                         print(
-                            f"  📈 介入効果: {target_edge[0]}-{target_edge[1]} = {pre_score:+.1f} → {post_score:+.1f} (変化: {improvement:+.1f}){reversal_mark}"
+                            f"  📈 介入効果（全エッジ平均）: {pre_score:+.1f} → {post_score:+.1f} (変化: {improvement:+.1f}){reversal_mark}"
                         )
+
+                    if post_score is not None:
                         del last_robot["pre_score"]
                         del last_robot["target_edge"]
 
@@ -389,7 +407,9 @@ def run_episode_with_mode(
                     # 介入対象エッジの介入前スコアを記録
                     target_edge = plan.get("edge")
                     pre_intervention_score = None
+
                     if target_edge and edges:
+                        # proposalモード: 特定エッジのスコアを記録
                         pre_intervention_score = edges.get(target_edge) or edges.get(
                             (target_edge[1], target_edge[0])
                         )
@@ -397,6 +417,12 @@ def run_episode_with_mode(
                             print(
                                 f"  介入対象エッジ: {target_edge[0]}-{target_edge[1]} (介入前: {pre_intervention_score:+.1f})"
                             )
+                    elif edges:
+                        # few_utterances/random_targetモード: 全エッジの平均スコアを記録
+                        pre_intervention_score = sum(edges.values()) / len(edges)
+                        print(
+                            f"  全エッジ平均スコア (介入前): {pre_intervention_score:+.1f}"
+                        )
 
                     robot_entry = {
                         "speaker": "ロボット",

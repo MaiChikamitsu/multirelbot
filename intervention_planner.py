@@ -272,9 +272,14 @@ class InterventionPlanner:
             )
             res = client.chat.completions.create(**params)
 
+            # Check for None content from API response
+            content = res.choices[0].message.content if res.choices and res.choices[0].message else None
+            if content is None:
+                print(f"⚠️ Azure OpenAI returned empty content for few_utterances intervention")
+                return None
+
             new_utt = (
-                res.choices[0]
-                .message.content.replace("[ロボット]", "")
+                content.replace("[ロボット]", "")
                 .replace("「", "")
                 .replace("」", "")
                 .strip()
@@ -444,9 +449,14 @@ class InterventionPlanner:
         )
         res = client.chat.completions.create(**params)
 
+        # Check for None content from API response
+        content = res.choices[0].message.content if res.choices and res.choices[0].message else None
+        if content is None:
+            print(f"⚠️ Azure OpenAI returned empty content for {plan.get('type')} intervention")
+            return None
+
         new_utt = (
-            res.choices[0]
-            .message.content.replace("[ロボット]", "")
+            content.replace("[ロボット]", "")
             .replace("「", "")
             .replace("」", "")
             .strip()
