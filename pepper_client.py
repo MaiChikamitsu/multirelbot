@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import socket
+import sys
 import threading
 from dataclasses import dataclass
 from typing import Optional
@@ -50,8 +51,46 @@ def send_to_pepper_async(message: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Send a test utterance to Pepper.")
     parser.add_argument("message", help="Pepperに言わせるテキスト")
+    parser.add_argument("--host", help="config.local.yaml の pepper.ip を一時的に上書き")
+    parser.add_argument("--port", type=int, help="config.local.yaml の pepper.port を一時的に上書き")
     args = parser.parse_args()
-    send_to_pepper(args.message)
+    try:
+        if args.host:
+            cfg = config.get_config()
+            client = PepperClient(
+                host=args.host,
+                port=args.port or getattr(cfg.pepper, "port", 2002) or 2002,
+            )
+            client.say(args.message)
+        elif args.port:
+            cfg = config.get_config()
+            host = getattr(cfg.pepper, "ip", None)
+            if not host:
+                raise RuntimeError("config.local.yaml の pepper.ip を設定してください。")
+            PepperClient(host=host, port=args.port).say(args.message)
+        else:
+            send_to_pepper(args.message)
+    except ConnectionRefusedError:
+        print(
+            "Pepperへの接続は拒否されました。IPは合っていても、Pepper側で"
+            " TCPサーバアプリが起動していない、またはポート番号が違う可能性が高いです。",
+            file=sys.stderr,
+        )
+        print(
+            "確認: Pepper側Android/Javaアプリを起動し、ServerSocket(port=2002) が"
+            " 待ち受けている状態で再実行してください。",
+            file=sys.stderr,
+        )
+        raise
+    except TimeoutError:
+        print(
+            "Pepperへの接続がタイムアウトしました。同じWi-Fiか、IPアドレスが正しいかを確認してください。",
+            file=sys.stderr,
+        )
+        raise
+    except OSError as exc:
+        print(f"Pepper接続エラー: {exc}", file=sys.stderr)
+        raise
 
 
 if __name__ == "__main__":
