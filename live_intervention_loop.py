@@ -433,7 +433,7 @@ def run_audio_mode(loop: LiveInterventionLoop) -> None:
 
 
 def _pepper_callback(message: str) -> None:
-    from community_analyzer import send_to_pepper_async
+    from pepper_client import send_to_pepper_async
 
     send_to_pepper_async(message)
 
