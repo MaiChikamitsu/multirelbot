@@ -148,8 +148,10 @@ participants:
 
 # Pepper設定
 pepper:
-  ip: "192.168.11.13" # PepperのIPアドレス
-  port: 2002 # Android アプリのポート
+  # ip: "192.168.11.13" # PepperのIPアドレス
+  ip: "192.168.11.15"
+  # port: 9503 # Android アプリのポート
+  port: 2003
   use_robot: true # Pepperを使用するかどうか
   robot_included: false # ロボットを関係性学習に組み込むかどうか
 

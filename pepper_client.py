@@ -13,7 +13,7 @@ import config
 @dataclass
 class PepperClient:
     host: str
-    port: int = 2002
+    port: int = 2003
     timeout_sec: float = 3.0
 
     def send_command(self, command: str) -> None:
@@ -33,7 +33,7 @@ class PepperClient:
 def from_config() -> PepperClient:
     cfg = config.get_config()
     host = getattr(cfg.pepper, "ip", None)
-    port = getattr(cfg.pepper, "port", 2002) or 2002
+    port = getattr(cfg.pepper, "port", 2003) or 2003
     if not host:
         raise RuntimeError("config.local.yaml の pepper.ip を設定してください。")
     return PepperClient(host=host, port=port)
@@ -66,6 +66,7 @@ def main() -> None:
             print(f"Pepper TCP server is reachable: {client.host}:{client.port}")
         elif args.message:
             client.say(args.message)
+            print(f"Sent to Pepper TCP server: {client.host}:{client.port}")
         else:
             parser.error("message か --check を指定してください。")
     except ConnectionRefusedError:
@@ -77,7 +78,7 @@ def main() -> None:
             file=sys.stderr,
         )
         print(
-            "確認: Pepper側Android/Javaアプリを起動し、ServerSocket(port=2002) が"
+            "確認: Pepper側Android/Javaアプリを起動し、ServerSocket(port=2003) が"
             " 待ち受けている状態で再実行してください。",
             file=sys.stderr,
         )
@@ -96,7 +97,7 @@ def main() -> None:
 def _endpoint_from_args(args: argparse.Namespace) -> tuple[str, int]:
     cfg = config.get_config()
     host = args.host or getattr(cfg.pepper, "ip", None)
-    port = args.port or getattr(cfg.pepper, "port", 2002) or 2002
+    port = args.port or getattr(cfg.pepper, "port", 2003) or 2003
     if not host:
         raise RuntimeError("config.local.yaml の pepper.ip を設定してください。")
     return host, port

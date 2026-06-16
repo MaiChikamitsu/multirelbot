@@ -334,11 +334,14 @@ def run_text_mode(loop: LiveInterventionLoop, input_stream: TextIO) -> None:
     print("Text mode: type human utterances as 'speaker: utterance'.")
     print(f"Robot checks every {loop.analyze_every} human utterances. Type 'exit' to stop.")
     try:
-        for speaker, utterance in _iter_text_logs(input_stream):
-            print(f"[{speaker}] {utterance}")
-            robot_log = loop.add_human_utterance(speaker, utterance)
-            if robot_log:
-                print()
+        try:
+            for speaker, utterance in _iter_text_logs(input_stream):
+                print(f"[{speaker}] {utterance}")
+                robot_log = loop.add_human_utterance(speaker, utterance)
+                if robot_log:
+                    print()
+        except KeyboardInterrupt:
+            print("\nText mode stopped. Saving logs...")
     finally:
         loop.save_outputs()
 

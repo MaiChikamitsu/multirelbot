@@ -13,7 +13,7 @@ Mac / PC
     | TCP: say:こんにちは\n
     v
 Pepper Android app
-  ServerSocket(port=2002)
+  ServerSocket(port=2003)
   QiSDK Say
 ```
 
@@ -49,7 +49,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 
 public class MainActivity extends RobotActivity implements RobotLifecycleCallbacks {
-    private static final int PORT = 2002;
+    private static final int PORT = 2003;
     private QiContext qiContext;
     private volatile boolean running = true;
     private ServerSocket serverSocket;
@@ -133,8 +133,8 @@ Pepper 側のIPアドレスを確認して、`config.local.yaml` に設定しま
 
 ```yaml
 pepper:
-  ip: "192.168.11.13"
-  port: 2002
+  ip: "192.168.11.15"
+  port: 2003
   use_robot: true
 ```
 
