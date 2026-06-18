@@ -99,6 +99,10 @@ class RealtimeCfg:
     analyze_every: Optional[int] = None
     robot_count_after_intervention: Optional[int] = None
 
+    def get(self, key: str, default: Any = None) -> Any:
+        value = getattr(self, key, None)
+        return default if value is None else value
+
 
 @dataclass
 class TopicManagerCfg:

@@ -107,6 +107,7 @@ realtime:
   # 音声認識設定
   silence_duration: 0.5 # 無音が続いたら送信する秒数
   use_google_stt: "v1" # 音声認識モデル ("v1": v1の非ストリーミング、"v1-streaming": v1のストリーミング、"v2-streaming": v2のストリーミング、false: OpenAI)
+  # use_google_stt: false
   use_direct_stream: false # true にするとマイクチャンクを直接STTへ流し込む
 
   # 話者分離設定
@@ -125,6 +126,8 @@ realtime:
 participants:
   num_participants: 3 # 参加者数（3 or 4）
   speakers: # 話者リスト（話者名: 音声サンプルファイルパス）
+    近光: "static/audio/chikamitsu_sample.wav"
+    ちょみんな聞いて: "static/audio/cho_sample.wav"
     # ロボット: "static/audio/robot_sample.wav"
     # 小野寺: "static/audio/onodera_sample.wav"
     # 佐藤: "static/audio/sato_sample.wav"
