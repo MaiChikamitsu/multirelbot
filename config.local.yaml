@@ -127,7 +127,7 @@ participants:
   num_participants: 3 # 参加者数（3 or 4）
   speakers: # 話者リスト（話者名: 音声サンプルファイルパス）
     近光: "static/audio/chikamitsu_sample.wav"
-    ちょみんな聞いて: "static/audio/cho_sample.wav"
+    voicepaper1: "static/audio/voicepaper1_sample.wav"
     # ロボット: "static/audio/robot_sample.wav"
     # 小野寺: "static/audio/onodera_sample.wav"
     # 佐藤: "static/audio/sato_sample.wav"
@@ -148,7 +148,6 @@ participants:
     # 中村: "static/audio/nakamura_sample.wav"
     # 浅田: "static/audio/asada_sample.wav"
     # 草野: "static/audio/kusano_sample.wav"
-
 # Pepper設定
 pepper:
   # ip: "192.168.11.13" # PepperのIPアドレス

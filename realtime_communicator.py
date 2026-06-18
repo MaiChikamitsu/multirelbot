@@ -602,29 +602,16 @@ def process_audio():
                             continue
                         print(f"🧑[{recognized_speaker}] {transcript_text}")
                         timestamp = datetime.now()
-                        # 音声認識後に、一つ前と話者が同じなら結合して、発話数をカウント
-                        if buffer_speaker == recognized_speaker:
-                            # 同一話者なら追記
-                            buffer_text += " " + transcript_text
-                        else:
-                            # 話者が変わったら、まず前のバッファをフラッシュ
-                            if buffer_speaker is not None:
-                                send_conversation(
-                                    buffer_speaker, buffer_text
-                                )  # 発話ログをブラウザへ送信
-                                session_manager.add_utterance_count(
-                                    {
-                                        "time": buffer_time,
-                                        "speaker": buffer_speaker,
-                                        "utterance": buffer_text,
-                                    }
-                                )
-                                log_line = f"[{buffer_time.strftime('%Y-%m-%d %H:%M:%S')}] [{buffer_speaker}] {buffer_text}"
-                                conversation_log.append(log_line)
-                            # 新しいバッファを開始
-                            buffer_speaker = recognized_speaker
-                            buffer_text = transcript_text
-                            buffer_time = timestamp
+                        send_conversation(recognized_speaker, transcript_text)
+                        session_manager.add_utterance_count(
+                            {
+                                "time": timestamp,
+                                "speaker": recognized_speaker,
+                                "utterance": transcript_text,
+                            }
+                        )
+                        log_line = f"[{timestamp.strftime('%Y-%m-%d %H:%M:%S')}] [{recognized_speaker}] {transcript_text}"
+                        conversation_log.append(log_line)
 
                 # 🔹 新しい話者のためにリセット
                 combined_audio_list = [segment_waveform.numpy()]
@@ -694,32 +681,16 @@ def process_audio():
                     continue
                 print(f"🧑[{recognized_speaker}] {transcript_text}")
                 timestamp = datetime.now()
-                # 音声認識後に、一つ前と話者が同じなら結合して、発話数をカウント
-                if buffer_speaker == recognized_speaker:
-                    print("同一話者の発話を検出")
-                    # 同一話者なら追記
-                    buffer_text += " " + transcript_text
-                else:
-                    # 話者が変わったら、まず前のバッファをフラッシュ
-                    if buffer_speaker is not None:
-                        print(f"フラッシュ: {buffer_speaker} - {buffer_text}")
-                        send_conversation(
-                            buffer_speaker, buffer_text
-                        )  # 発話ログをブラウザへ送信
-                        session_manager.add_utterance_count(
-                            {
-                                "time": buffer_time,
-                                "speaker": buffer_speaker,
-                                "utterance": buffer_text,
-                            }
-                        )
-                        log_line = f"[{buffer_time.strftime('%Y-%m-%d %H:%M:%S')}] [{buffer_speaker}] {buffer_text}"
-                        conversation_log.append(log_line)
-                    # 新しいバッファを開始
-                    print(f"新しいバッファを開始: {recognized_speaker}")
-                    buffer_speaker = recognized_speaker
-                    buffer_text = transcript_text
-                    buffer_time = timestamp
+                send_conversation(recognized_speaker, transcript_text)
+                session_manager.add_utterance_count(
+                    {
+                        "time": timestamp,
+                        "speaker": recognized_speaker,
+                        "utterance": transcript_text,
+                    }
+                )
+                log_line = f"[{timestamp.strftime('%Y-%m-%d %H:%M:%S')}] [{recognized_speaker}] {transcript_text}"
+                conversation_log.append(log_line)
                 print(f"音声処理終了：{datetime.now()}")
 
 
