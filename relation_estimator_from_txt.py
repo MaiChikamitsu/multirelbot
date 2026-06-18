@@ -29,6 +29,10 @@ NUM_TRIALS = 5  # 各推定を繰り返す回数
 # ==========================
 
 
+def _pair_label(pair: Tuple[str, str]) -> str:
+    return f"{pair[0]}-{pair[1]}"
+
+
 class EMAScorer:
     """各試行ごとに独立したEMA状態を保持するクラス"""
 
@@ -67,8 +71,10 @@ class EMAScorer:
             self.scores[pair] = raw_score
             self.history[pair].append(session_utterance)
             if DEBUG and self.use_ema:
-                print(f"    🔢 α計算: {pair}, session={session_utterance}, past=0, α=1.00 (初回)")
-                print(f"    🔁 EMA初期化: {pair} = {raw_score:+.1f}")
+                print(
+                    f"    EMA {_pair_label(pair)}: raw={raw_score:+.1f}, "
+                    f"alpha=1.00, ema={raw_score:+.1f} (初回)"
+                )
             result = raw_score
         else:
             if self.use_ema:
@@ -89,8 +95,10 @@ class EMAScorer:
                 self.scores[pair] = updated
 
                 if DEBUG:
-                    print(f"    🔢 α計算: {pair}, session={session_utterance}, weighted_past={weighted_past:.2f}, total={weighted_total:.2f}, α={alpha:.2f}")
-                    print(f"    🔁 EMA更新: {pair} = {alpha:.2f}×{raw_score:+.1f} + {(1-alpha):.2f}×{prev:+.1f} → {updated:+.1f}")
+                    print(
+                        f"    EMA {_pair_label(pair)}: raw={raw_score:+.1f}, "
+                        f"prev={prev:+.1f}, alpha={alpha:.2f}, ema={updated:+.1f}"
+                    )
 
                 self.history[pair].append(session_utterance)
                 result = updated
@@ -99,7 +107,7 @@ class EMAScorer:
                 self.scores[pair] = raw_score
                 self.history[pair].append(session_utterance)
                 if DEBUG:
-                    print(f"    🔄 スコア更新（EMA無効）: {pair} = {raw_score:+.1f}")
+                    print(f"    score {_pair_label(pair)}: {raw_score:+.1f} (EMA無効)")
                 result = raw_score
 
         return result
@@ -228,14 +236,30 @@ def estimate_relation_once(
     )
 
     prompt = f"""
-以下の会話を読み、{', '.join(participants)}の「仲の良さ（親密度）」を -1.0 〜 +1.0 の間の**実数（小数第1位まで）**で評価してください。
-0.0 は特に親しさも対立も感じない「中立的な状態」です。
-そこから -1.0（強い対立） 〜 +1.0（非常に親しい） に向けて、どれくらい離れているかを評価してください。
-出力形式を厳守し、理由・補足説明などは一切加えないでください。
+以下の会話を読み、{', '.join(participants)}の「相互の関係状態」を -1.0 〜 +1.0 の間の実数（小数第1位まで）で評価してください。
+
+評価対象は「仲の良さ」だけではなく、会話上に表れている受容・拒否・苛立ち・攻撃性・無視・協力姿勢を含む関係状態です。
+
+0.0 は、親しさも対立も明確でない中立的な状態です。
++1.0 は、強い共感・協力・好意・相手への関心が明確な状態です。
+-1.0 は、強い拒否・苛立ち・攻撃・皮肉・無視・会話継続の拒絶が明確な状態です。
+
+重要な判定ルール：
+- 片方だけが不快感・拒否・苛立ち・攻撃的反応を示している場合も、そのペアの関係は負として評価してください。
+- 相手が定型文・説明文・機械的な発話をしているだけでも、もう片方が明確に拒否・苛立ちを示していれば負として評価してください。
+- 「うるさい」「静かにして」「何を言っているの？」など、相手の発話を拒否・遮断する発言は負の関係サインです。
+- 評価対象ペアのどちらかが「うるさい」「静かにして」「もう分かった」「それはいいから」など拒否・遮断の発言をした場合、そのペアを +0.1 以上に評価してはいけません。
+- 拒否・遮断の発言が複数回ある場合、そのペアは原則として -0.5 以下にしてください。
+- 定型的な案内文や操作説明は、共感・協力・好意の証拠として扱わないでください。
+- 単に同じ話題を続けているだけでは、親しいとは評価しないでください。
+- 互いに反応していても、内容が拒否・批判・苛立ちなら正ではなく負にしてください。
 
 具体例：
--1.0 例：皮肉、批判、無視、相手を無視して話を進める
-+1.0 例：共感、褒める、相手に話題を振る、一緒に行動する
+-1.0 例：強い拒否、攻撃、侮辱、明確な苛立ち、会話継続の拒絶
+-0.5 例：軽い批判、不満、距離感、相手の発話への否定的反応
+0.0 例：事務的・定型的・関係性が読み取れない発話
++0.5 例：軽い共感、応答、関心、相手への配慮
++1.0 例：強い共感、称賛、協力、一緒に行動する提案
 
 評価対象は以下のペアです（ロボットは含みません）：
 {pair_lines}
@@ -271,17 +295,19 @@ def estimate_relation_once(
     res = client.chat.completions.create(**params)
     response_text = res.choices[0].message.content.strip()
 
-    # if DEBUG:
-    #     print(f"\n  🤖 LLM生応答:")
-    #     print(f"  {response_text}")
+    if DEBUG:
+        print(f"\n{'=' * 18} RELATION ESTIMATION {'=' * 18}")
+        print("  LLM raw:")
+        for line in response_text.splitlines():
+            print(f"    {line}")
 
     # レスポンスをパース
     scores = parse_scores_from_response(response_text, participants)
 
     if DEBUG:
-        print(f"\n  📊 パース結果:")
+        print("  parsed scores:")
         for pair, score in sorted(scores.items()):
-            print(f"    {pair}: {score:+.1f}")
+            print(f"    {_pair_label(pair)}: {score:+.1f}")
 
     return scores
 

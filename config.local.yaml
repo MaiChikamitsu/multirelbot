@@ -107,6 +107,7 @@ realtime:
   # 音声認識設定
   silence_duration: 0.5 # 無音が続いたら送信する秒数
   use_google_stt: "v1" # 音声認識モデル ("v1": v1の非ストリーミング、"v1-streaming": v1のストリーミング、"v2-streaming": v2のストリーミング、false: OpenAI)
+  # use_google_stt: false
   use_direct_stream: false # true にするとマイクチャンクを直接STTへ流し込む
 
   # 話者分離設定
@@ -125,6 +126,10 @@ realtime:
 participants:
   num_participants: 3 # 参加者数（3 or 4）
   speakers: # 話者リスト（話者名: 音声サンプルファイルパス）
+    ちかみつ: "static/audio/chikamitsu_sample.wav"
+    けいじろう: "static/audio/ash_sample.wav"
+    くさの: "static/audio/kusano_sample.wav"
+
     # ロボット: "static/audio/robot_sample.wav"
     # 小野寺: "static/audio/onodera_sample.wav"
     # 佐藤: "static/audio/sato_sample.wav"
@@ -145,11 +150,15 @@ participants:
     # 中村: "static/audio/nakamura_sample.wav"
     # 浅田: "static/audio/asada_sample.wav"
     # 草野: "static/audio/kusano_sample.wav"
-
+    # 近光: "static/audio/chikamitsu_sample.wav"
+    # voicepaper1: "static/audio/voicepaper1_sample.wav"
+    # 松崎: "static/audio/chikamitsu_high_sample.wav"
 # Pepper設定
 pepper:
-  ip: "192.168.11.13" # PepperのIPアドレス
-  port: 2002 # Android アプリのポート
+  # ip: "192.168.11.13" # PepperのIPアドレス
+  ip: "192.168.11.15"
+  # port: 9503 # Android アプリのポート
+  port: 2003
   use_robot: true # Pepperを使用するかどうか
   robot_included: false # ロボットを関係性学習に組み込むかどうか
 

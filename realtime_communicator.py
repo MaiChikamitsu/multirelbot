@@ -82,6 +82,20 @@ DIARIZATION_THRESHOLD = _CFG.realtime.get("diarization_threshold", 50)  # 話者
 SKIP_THRESHOLD_BYTES = _CFG.realtime.get("skip_threshold_bytes", 30000)  # 音声データのバイト数がこの値以下なら処理をスキップ
 ROBOT_UTTERANCE_REMAIN = 0  # ロボット発話後にロボット識別を有効にする残り発話数
 
+
+def _clock() -> str:
+    return datetime.now().strftime("%H:%M:%S")
+
+
+def _log_block(title: str) -> None:
+    print(f"\n{'=' * 18} {title} {'=' * 18}")
+
+
+def _log_utterance(speaker: str, text: str) -> None:
+    print(f"\n🧑 発話 [{speaker}]")
+    print(f"   {text}")
+
+
 # 音声アクティビティ検出 (VAD)
 vad = webrtcvad.Vad(VAD_MODE)
 
@@ -357,7 +371,6 @@ def identify_speaker(audio_buffer):
 
     global known_speakers
     robot_utterance_remain = rc.get_robot_count()
-    print(f"ロボット発話残り: {robot_utterance_remain}")
 
     new_embedding = extract_embedding(audio_buffer)
     if new_embedding is None:
@@ -367,6 +380,7 @@ def identify_speaker(audio_buffer):
 
     best_match = None
     best_score = -1.0
+    similarities = []
 
     # 参考音声を使って話者を特定
     for speaker, emb in known_speakers.items():
@@ -375,7 +389,7 @@ def identify_speaker(audio_buffer):
             continue
 
         similarity = 1 - cosine(new_embedding, emb.flatten())
-        print(f"🔍 類似度（{speaker}）: {similarity:.2f}")
+        similarities.append((speaker, similarity))
         if (
             similarity > SIMILARITY_THRESHOLD and similarity > best_score
         ):  # SIMILARITY_THRESHOLD 以下なら新規登録。以上なら既存話者から類似度が最も大きいものを選択
@@ -389,6 +403,17 @@ def identify_speaker(audio_buffer):
         new_speaker_id = f"話者_{len(known_speakers) + 1}"
         known_speakers[new_speaker_id] = new_embedding
         result = new_speaker_id
+
+    if similarities:
+        score_text = " / ".join(
+            f"{speaker}={score:+.2f}" for speaker, score in similarities
+        )
+        robot_text = (
+            f" / robot_remain={robot_utterance_remain}"
+            if robot_utterance_remain > 0
+            else ""
+        )
+        print(f"  話者判定: {score_text}  -> {result}{robot_text}")
 
     if robot_utterance_remain > 0:
         rc.dec_robot_count()  # ロボット発話残りをデクリメント
@@ -489,7 +514,6 @@ def process_audio():
         if not frames:
             continue
 
-        print(f"音声処理開始：{datetime.now()}")
         audio_buffer = BytesIO()
         with wave.open(audio_buffer, "wb") as wf:
             wf.setnchannels(CHANNELS)
@@ -511,10 +535,12 @@ def process_audio():
             waveform, sample_rate = torchaudio.load(audio_buffer)
             speaker_timeline = [("single", 0.0, duration)]
 
+        _log_block(f"AUDIO {_clock()} / {duration:.1f}s")
+
         # 音声があるバイト数よりも小さければ、処理を全てスキップ
         # print(f"音声データのバイト数: {audio_buffer.getbuffer().nbytes}")
         if audio_buffer.getbuffer().nbytes < SKIP_THRESHOLD_BYTES:
-            print("⚠️ 音声データが短い：処理を全てスキップ")
+            print(f"  skip: 音声データが短い ({audio_buffer.getbuffer().nbytes} bytes)")
             continue
 
         prev_speaker = None
@@ -557,7 +583,7 @@ def process_audio():
                     elif recognized_speaker == "ロボット":
                         print("🤖 ロボットの発話のため、スキップします。")
                     else:
-                        print(f"音声認識開始（複数）：{datetime.now()}")
+                        print("  STT: start (複数)")
                         if USE_GOOGLE_STT:
                             # Google Cloud Speech-to-Text v2 を使う
                             # --- バッファを書き出してファイル化 ---
@@ -594,37 +620,24 @@ def process_audio():
                                 language="ja",
                             )
                             transcript_text = resp.text
-                        print(f"音声認識終了（複数）：{datetime.now()}")
+                        print("  STT: done")
                         if not is_japanese(transcript_text):
                             print(
                                 f"⚠️ 話者識別結果が日本語ではありません: {transcript_text}"
                             )
                             continue
-                        print(f"🧑[{recognized_speaker}] {transcript_text}")
+                        _log_utterance(recognized_speaker, transcript_text)
                         timestamp = datetime.now()
-                        # 音声認識後に、一つ前と話者が同じなら結合して、発話数をカウント
-                        if buffer_speaker == recognized_speaker:
-                            # 同一話者なら追記
-                            buffer_text += " " + transcript_text
-                        else:
-                            # 話者が変わったら、まず前のバッファをフラッシュ
-                            if buffer_speaker is not None:
-                                send_conversation(
-                                    buffer_speaker, buffer_text
-                                )  # 発話ログをブラウザへ送信
-                                session_manager.add_utterance_count(
-                                    {
-                                        "time": buffer_time,
-                                        "speaker": buffer_speaker,
-                                        "utterance": buffer_text,
-                                    }
-                                )
-                                log_line = f"[{buffer_time.strftime('%Y-%m-%d %H:%M:%S')}] [{buffer_speaker}] {buffer_text}"
-                                conversation_log.append(log_line)
-                            # 新しいバッファを開始
-                            buffer_speaker = recognized_speaker
-                            buffer_text = transcript_text
-                            buffer_time = timestamp
+                        send_conversation(recognized_speaker, transcript_text)
+                        session_manager.add_utterance_count(
+                            {
+                                "time": timestamp,
+                                "speaker": recognized_speaker,
+                                "utterance": transcript_text,
+                            }
+                        )
+                        log_line = f"[{timestamp.strftime('%Y-%m-%d %H:%M:%S')}] [{recognized_speaker}] {transcript_text}"
+                        conversation_log.append(log_line)
 
                 # 🔹 新しい話者のためにリセット
                 combined_audio_list = [segment_waveform.numpy()]
@@ -651,7 +664,7 @@ def process_audio():
             elif recognized_speaker == "ロボット":
                 print("🤖 ロボットの発話のため、スキップします。")
             else:
-                print(f"音声認識開始（1人）：{datetime.now()}")
+                print("  STT: start (1人)")
                 if USE_GOOGLE_STT:
                     # Google Cloud Speech-to-Text v2 を使う
                     # --- バッファを書き出してファイル化 ---
@@ -688,39 +701,23 @@ def process_audio():
                         language="ja",
                     )
                     transcript_text = resp.text
-                print(f"音声認識終了（1人）：{datetime.now()}")
+                print("  STT: done")
                 if not is_japanese(transcript_text):
                     print(f"⚠️ 音声認識結果が日本語ではありません: {transcript_text}")
                     continue
-                print(f"🧑[{recognized_speaker}] {transcript_text}")
+                _log_utterance(recognized_speaker, transcript_text)
                 timestamp = datetime.now()
-                # 音声認識後に、一つ前と話者が同じなら結合して、発話数をカウント
-                if buffer_speaker == recognized_speaker:
-                    print("同一話者の発話を検出")
-                    # 同一話者なら追記
-                    buffer_text += " " + transcript_text
-                else:
-                    # 話者が変わったら、まず前のバッファをフラッシュ
-                    if buffer_speaker is not None:
-                        print(f"フラッシュ: {buffer_speaker} - {buffer_text}")
-                        send_conversation(
-                            buffer_speaker, buffer_text
-                        )  # 発話ログをブラウザへ送信
-                        session_manager.add_utterance_count(
-                            {
-                                "time": buffer_time,
-                                "speaker": buffer_speaker,
-                                "utterance": buffer_text,
-                            }
-                        )
-                        log_line = f"[{buffer_time.strftime('%Y-%m-%d %H:%M:%S')}] [{buffer_speaker}] {buffer_text}"
-                        conversation_log.append(log_line)
-                    # 新しいバッファを開始
-                    print(f"新しいバッファを開始: {recognized_speaker}")
-                    buffer_speaker = recognized_speaker
-                    buffer_text = transcript_text
-                    buffer_time = timestamp
-                print(f"音声処理終了：{datetime.now()}")
+                send_conversation(recognized_speaker, transcript_text)
+                session_manager.add_utterance_count(
+                    {
+                        "time": timestamp,
+                        "speaker": recognized_speaker,
+                        "utterance": transcript_text,
+                    }
+                )
+                log_line = f"[{timestamp.strftime('%Y-%m-%d %H:%M:%S')}] [{recognized_speaker}] {transcript_text}"
+                conversation_log.append(log_line)
+                print(f"  done: {_clock()}")
 
 
 def process_audio_batch():

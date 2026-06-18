@@ -97,7 +97,7 @@ class InterventionPlanner:
         sorted_tri = self.sort_triangles()
         for tri in sorted_tri:
             struct, _ = self.triangle_scores[tri]  # 構造タイプを取得
-            print(struct)
+            print(f"  structure: {struct} / triangle={tri}")
             if struct in ("---", "++-", "+-+", "-++"):
                 return tri
         return None
@@ -161,6 +161,21 @@ class InterventionPlanner:
             else:
                 # 参加者がいない場合（通常は起こらない）
                 return None
+
+        # --- 2者会話: 負の関係エッジを直接修復対象にする ---
+        dyad_edges = [
+            (u, v, data.get("score", 0.0))
+            for u, v, data in self.graph.edges(data=True)
+            if data.get("score", 0.0) < 0
+        ]
+        if self.num_participants == 2 and dyad_edges:
+            node1, node2, score = min(dyad_edges, key=lambda x: x[2])
+            print(f"🤖 2者関係の弱さ検出: エッジ ({node1}, {node2}) = {score:+.1f}")
+            return {
+                "type": "dyad",
+                "edge": (node1, node2),
+                "score": score,
+            }
 
         # Step 1: 孤立検出
         isolated = self.detect_structural_isolation()
@@ -285,7 +300,7 @@ class InterventionPlanner:
                 .strip()
             )
             self.past_utterances.append(new_utt)
-            print(f"🤖 past_utterances: {self.past_utterances}\n")
+            print(f"  robot utterance history: {len(self.past_utterances)}")
             return new_utt
 
         elif plan["type"] == "random_target":
@@ -416,6 +431,20 @@ class InterventionPlanner:
 - ただし「橋渡し」「仲介」などの直接的な語は使わず、
   会話の流れに合った自然な形で方向性を整える一言にしてください。"""
 
+        elif plan["type"] == "dyad":
+            node1, node2 = plan["edge"]
+            score = plan.get("score", 0.0)
+            print(f"🤖 2者関係修復: エッジ ({node1}, {node2})")
+            additional_context = f"""
+【追加条件：2者関係の修復】
+- 改善対象エッジ：{node1}さん ⇄ {node2}さん
+- 現在の関係スコア：{score:.1f}（対立・距離がある状態）
+- この2人が互いに攻撃的になりすぎず、会話を続けやすくなるような一言を生成してください。
+- どちらか一方を責めず、会話の流れを軽く整える発言にしてください。
+- 発言対象はあなたが決めて構いません。
+  （{node1}さんに直接話す／{node2}さんに話す／両方に話すなど最適な方法を選ぶ）
+- ただし、必ず名前を入れてください。"""
+
         # userプロンプト（会話履歴）
         user_prompt = f"""現在の会話履歴：
 {context}
@@ -462,5 +491,5 @@ class InterventionPlanner:
             .strip()
         )
         self.past_utterances.append(new_utt)
-        print(f"🤖 past_utterances: {self.past_utterances}\n")
+        print(f"  robot utterance history: {len(self.past_utterances)}")
         return new_utt
