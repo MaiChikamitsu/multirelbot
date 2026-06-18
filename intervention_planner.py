@@ -97,7 +97,7 @@ class InterventionPlanner:
         sorted_tri = self.sort_triangles()
         for tri in sorted_tri:
             struct, _ = self.triangle_scores[tri]  # 構造タイプを取得
-            print(struct)
+            print(f"  structure: {struct} / triangle={tri}")
             if struct in ("---", "++-", "+-+", "-++"):
                 return tri
         return None
@@ -300,7 +300,7 @@ class InterventionPlanner:
                 .strip()
             )
             self.past_utterances.append(new_utt)
-            print(f"🤖 past_utterances: {self.past_utterances}\n")
+            print(f"  robot utterance history: {len(self.past_utterances)}")
             return new_utt
 
         elif plan["type"] == "random_target":
@@ -491,5 +491,5 @@ class InterventionPlanner:
             .strip()
         )
         self.past_utterances.append(new_utt)
-        print(f"🤖 past_utterances: {self.past_utterances}\n")
+        print(f"  robot utterance history: {len(self.past_utterances)}")
         return new_utt

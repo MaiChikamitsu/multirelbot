@@ -29,6 +29,10 @@ NUM_TRIALS = 5  # 各推定を繰り返す回数
 # ==========================
 
 
+def _pair_label(pair: Tuple[str, str]) -> str:
+    return f"{pair[0]}-{pair[1]}"
+
+
 class EMAScorer:
     """各試行ごとに独立したEMA状態を保持するクラス"""
 
@@ -67,8 +71,10 @@ class EMAScorer:
             self.scores[pair] = raw_score
             self.history[pair].append(session_utterance)
             if DEBUG and self.use_ema:
-                print(f"    🔢 α計算: {pair}, session={session_utterance}, past=0, α=1.00 (初回)")
-                print(f"    🔁 EMA初期化: {pair} = {raw_score:+.1f}")
+                print(
+                    f"    EMA {_pair_label(pair)}: raw={raw_score:+.1f}, "
+                    f"alpha=1.00, ema={raw_score:+.1f} (初回)"
+                )
             result = raw_score
         else:
             if self.use_ema:
@@ -89,8 +95,10 @@ class EMAScorer:
                 self.scores[pair] = updated
 
                 if DEBUG:
-                    print(f"    🔢 α計算: {pair}, session={session_utterance}, weighted_past={weighted_past:.2f}, total={weighted_total:.2f}, α={alpha:.2f}")
-                    print(f"    🔁 EMA更新: {pair} = {alpha:.2f}×{raw_score:+.1f} + {(1-alpha):.2f}×{prev:+.1f} → {updated:+.1f}")
+                    print(
+                        f"    EMA {_pair_label(pair)}: raw={raw_score:+.1f}, "
+                        f"prev={prev:+.1f}, alpha={alpha:.2f}, ema={updated:+.1f}"
+                    )
 
                 self.history[pair].append(session_utterance)
                 result = updated
@@ -99,7 +107,7 @@ class EMAScorer:
                 self.scores[pair] = raw_score
                 self.history[pair].append(session_utterance)
                 if DEBUG:
-                    print(f"    🔄 スコア更新（EMA無効）: {pair} = {raw_score:+.1f}")
+                    print(f"    score {_pair_label(pair)}: {raw_score:+.1f} (EMA無効)")
                 result = raw_score
 
         return result
@@ -288,16 +296,18 @@ def estimate_relation_once(
     response_text = res.choices[0].message.content.strip()
 
     if DEBUG:
-        print(f"\n  🤖 LLM生応答:")
-        print(f"  {response_text}")
+        print(f"\n{'=' * 18} RELATION ESTIMATION {'=' * 18}")
+        print("  LLM raw:")
+        for line in response_text.splitlines():
+            print(f"    {line}")
 
     # レスポンスをパース
     scores = parse_scores_from_response(response_text, participants)
 
     if DEBUG:
-        print(f"\n  📊 パース結果:")
+        print("  parsed scores:")
         for pair, score in sorted(scores.items()):
-            print(f"    {pair}: {score:+.1f}")
+            print(f"    {_pair_label(pair)}: {score:+.1f}")
 
     return scores
 

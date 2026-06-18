@@ -25,6 +25,9 @@ class PepperClient:
     def say(self, message: str) -> None:
         self.send_command(f"say:{message}")
 
+    def look(self, speaker: str) -> None:
+        self.send_command(f"look:{speaker}")
+
     def animate(self, name: str, seconds: Optional[int] = None) -> None:
         suffix = f",{seconds}" if seconds is not None else ""
         self.send_command(f"anim:{name}{suffix}")
@@ -48,11 +51,21 @@ def send_to_pepper_async(message: str) -> None:
     threading.Thread(target=send_to_pepper, args=(message,), daemon=True).start()
 
 
+def send_look_to_pepper(speaker: str) -> None:
+    client = from_config()
+    client.look(speaker)
+
+
+def send_look_to_pepper_async(speaker: str) -> None:
+    threading.Thread(target=send_look_to_pepper, args=(speaker,), daemon=True).start()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Send a test utterance to Pepper.")
     parser.add_argument("message", nargs="?", help="Pepperに言わせるテキスト")
     parser.add_argument("--host", help="config.local.yaml の pepper.ip を一時的に上書き")
     parser.add_argument("--port", type=int, help="config.local.yaml の pepper.port を一時的に上書き")
+    parser.add_argument("--look", help="指定した話者の方を見るコマンドを送る")
     parser.add_argument(
         "--check",
         action="store_true",
@@ -64,6 +77,9 @@ def main() -> None:
         if args.check:
             client.send_command("ping")
             print(f"Pepper TCP server is reachable: {client.host}:{client.port}")
+        elif args.look:
+            client.look(args.look)
+            print(f"Sent Pepper look command: {args.look} ({client.host}:{client.port})")
         elif args.message:
             client.say(args.message)
             print(f"Sent to Pepper TCP server: {client.host}:{client.port}")

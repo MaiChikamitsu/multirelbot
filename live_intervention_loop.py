@@ -34,6 +34,7 @@ from log_filtering import filter_logs_by_human_count
 Log = Dict[str, object]
 RelationScores = Dict[Tuple[str, str], float]
 SpeakCallback = Callable[[str], None]
+GazeCallback = Callable[[str], None]
 
 
 class LiveInterventionLoop:
@@ -52,6 +53,7 @@ class LiveInterventionLoop:
         mode: str = "proposal",
         llm_model: Optional[str] = None,
         speak_callback: Optional[SpeakCallback] = None,
+        gaze_callback: Optional[GazeCallback] = None,
         output_dir: Optional[str] = None,
         debug: bool = True,
     ) -> None:
@@ -80,6 +82,7 @@ class LiveInterventionLoop:
         self.mode = mode
         self.llm_model = llm_model
         self.speak_callback = speak_callback
+        self.gaze_callback = gaze_callback
         self.logs: List[Log] = []
         self.human_utterance_count = 0
         self.latest_scores: RelationScores = {}
@@ -117,6 +120,8 @@ class LiveInterventionLoop:
             "utterance": utterance,
         }
         self.logs.append(log)
+        if self.gaze_callback:
+            self.gaze_callback(speaker)
         self.human_utterance_count += 1
         if speaker not in self.participants:
             self.participants.append(speaker)
@@ -182,7 +187,9 @@ class LiveInterventionLoop:
             "plan": plan,
         }
         self.logs.append(robot_log)
+        print(f"\n{'=' * 18} ROBOT INTERVENTION {'=' * 18}")
         print(f"[ロボット] {utterance}")
+        print(f"{'=' * 56}")
         if self.speak_callback:
             self.speak_callback(utterance)
         return robot_log
@@ -441,6 +448,12 @@ def _pepper_callback(message: str) -> None:
     send_to_pepper_async(message)
 
 
+def _pepper_gaze_callback(speaker: str) -> None:
+    from pepper_client import send_look_to_pepper_async
+
+    send_look_to_pepper_async(speaker)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Run live relation-based robot interventions from text logs."
@@ -490,6 +503,7 @@ def main() -> None:
         mode=args.mode,
         llm_model=args.llm_model,
         speak_callback=_pepper_callback if args.send_to_pepper else None,
+        gaze_callback=_pepper_gaze_callback if args.send_to_pepper else None,
         output_dir=args.output_dir,
         debug=not args.quiet,
     )
