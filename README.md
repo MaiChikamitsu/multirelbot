@@ -53,6 +53,105 @@
 
 4. **対話開始**
 
+## MAVeRD評価・追加ベースラインの実行
+IEEE Access再投稿向けの比較実験は `evaluate_baselines.py` で実行します。既存の LLM-only と MAVeRD の実装本体は変更せず、同じ raw LLM score から以下の6手法を比較します。
+
+- Interaction Frequency
+- Sentiment-based
+- Stance-based
+- LLM-only
+- LLM + SMA
+- MAVeRD
+
+### 6手法をまとめて実行
+```bash
+python3 evaluate_baselines.py \
+  --output-dir estimation_accuracy/baseline_comparison \
+  --llm-model gpt-4.1 \
+  --max-history-human 6 \
+  --num-trials 5 \
+  --sma-window 3 \
+  --gamma 0.8 \
+  --max-history-sessions 3
+```
+
+出力ファイル:
+
+- `estimation_accuracy/baseline_comparison/baseline_summary.csv`: 手法ごとの MAE / Pearson summary
+- `estimation_accuracy/baseline_comparison/baseline_details.csv`: episode / round / pair ごとの prediction, human ground truth, error
+- `estimation_accuracy/baseline_comparison/baseline_metadata.json`: 実行条件、モデル、パラメータ
+- `estimation_accuracy/baseline_comparison/raw_scores_cache.json`: LLM-only / SMA / MAVeRD で共有する raw LLM score
+
+### MAVeRDやLLM条件の調節
+`evaluate_baselines.py` では、主に以下の引数で調節します。
+
+- `--llm-model`: 関係推定に使う GPT / Azure deployment 名
+- `--max-history-human`: 関係推定LLMに入れる人間発話履歴数
+- `--num-trials`: LLM推定の試行回数
+- `--gamma`: MAVeRD の DIWS/EMA 時間減衰率
+- `--max-history-sessions`: MAVeRD の EMA で保持する履歴セッション数
+- `--sma-window`: LLM + SMA の直近 K 個の窓幅
+
+例: GPTモデル、履歴長、MAVeRDパラメータを変える場合
+
+```bash
+python3 evaluate_baselines.py \
+  --output-dir estimation_accuracy/baseline_comparison_gpt5_g075 \
+  --llm-model gpt-5-chat \
+  --max-history-human 9 \
+  --num-trials 5 \
+  --sma-window 3 \
+  --gamma 0.75 \
+  --max-history-sessions 3 \
+  --refresh-raw-cache
+```
+
+`--llm-model`、`--max-history-human`、`--num-trials` を変えた場合は raw LLM score も変わるため、`--refresh-raw-cache` を付けて再生成してください。`--gamma`、`--max-history-sessions`、`--sma-window` だけを変える場合は、同じ raw score cache を再利用できます。
+
+### 既存MAVeRDのパラメータ探索
+既存の MAVeRD grid search は `parameter_grid_search.py` で実行します。
+
+```bash
+python3 parameter_grid_search.py
+```
+
+探索範囲は `parameter_grid_search.py` 上部の以下を編集します。
+
+```python
+LLM_MODELS = ["gpt-4.1", "gpt-5-chat"]
+GAMMAS = [...]
+MAX_HISTORY_SESSIONS_LIST = [2, 3]
+MAX_HISTORY_HUMAN_LIST = [6]
+NUM_TRIALS = 5
+```
+
+### 既存の単体関係推定スクリプト
+従来の単体実行は `relation_estimator_from_txt.py` を使います。
+
+```bash
+python3 relation_estimator_from_txt.py
+```
+
+調節箇所は `relation_estimator_from_txt.py` 上部です。
+
+```python
+LLM_MODEL = "gpt-4.1"
+USE_EMA = True
+GAMMA = 0.8
+MAX_HISTORY_SESSIONS = 3
+MAX_HISTORY_HUMAN = 9
+NUM_TRIALS = 5
+```
+
+`LLM_MODEL = None` にした場合は `config.local.yaml` / 環境変数側の relation model 設定を使用します。関係推定時の temperature は `config.local.yaml` の `llm.relation_temperature` で調節します。
+
+### テスト
+追加ベースラインと既存 EMA 計算の regression test は以下で実行します。
+
+```bash
+pytest -q
+```
+
 ## パラメータ。括弧内はデフォルト値
 ### realtime_communicator.py
 - **SILENCE_DURATION**: 無音時間（0.5秒）
