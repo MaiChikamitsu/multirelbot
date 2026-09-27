@@ -63,6 +63,58 @@ IEEE Access再投稿向けの比較実験は `evaluate_baselines.py` で実行�
 - LLM + SMA
 - MAVeRD
 
+### 文字で作成した会話ログを使う場合
+音声認識を使わず、手入力・生成・文字起こし済みの会話を評価したい場合は、会話を `.txt` に保存して読み込ませます。会話ファイルは1行1発話で、必ず以下の形式にしてください。
+
+```text
+[話者名] 発話内容
+```
+
+例:
+
+```text
+[A] キャッシュレスなんて面倒なだけじゃん。現金の方がわかりやすいし安心なんだけど。
+[B] は？現金の方が面倒くさいでしょ。いちいち小銭数えるのとかイライラするわ。
+[C] どっちも不便なところあるだろ。キャッシュレスだって、スマホの電池切れたら何もできないし。
+[ロボット] AさんもBさんも、結局使いやすくてストレスが少ない方法を求めてるって点では同じですよね。
+[A] 同じって言われても納得いかないんだけど。
+```
+
+参加者名は `A`, `B`, `C` のように一貫させてください。`[ロボット]` の発話は入れても構いませんが、参加者ペアの評価対象からは除外されます。
+
+関係スコアだけを見たい場合は、`relation_estimator_from_txt.py` 用に以下へ保存します。
+
+```text
+estimation_accuracy/conversation.txt
+```
+
+論文用の6手法比較をしたい場合は、既定では以下の2ファイルを使います。
+
+```text
+estimation_accuracy/conversation1.txt
+estimation_accuracy/conversation2.txt
+```
+
+別名の会話ファイルを使いたい場合は、`relation_estimator_from_txt.py` の `INPUT_FILE`、または `evaluation_utils.py` の `DEFAULT_EPISODES` を変更してください。
+
+6手法比較で MAE / Pearson まで出すには、会話ログに対応する人間評価CSVも必要です。既定では以下を使います。
+
+```text
+estimation_accuracy/human1.csv
+estimation_accuracy/human2.csv
+```
+
+人間評価CSVは、既存ファイルと同じく最低限以下の列を持つ形式にしてください。評価値は `人の平均` 列に入れます。
+
+```csv
+識別ラベル,エピソード,セクション,ペア,人の平均
+1-1-A-B,1,1,A-B,-0.746153846
+1-1-B-C,1,1,B-C,-0.376923077
+1-1-C-A,1,1,C-A,-0.269230769
+```
+
+`識別ラベル` は `エピソード-セクション-参加者-参加者` の形です。`セクション` が round 番号として扱われ、`C-A` のような順序でも内部で `A-C` に正規化されます。
+
 ### 6手法をまとめて実行
 ```bash
 python3 evaluate_baselines.py \
@@ -132,9 +184,13 @@ NUM_TRIALS = 5
 python3 relation_estimator_from_txt.py
 ```
 
+これは `estimation_accuracy/conversation.txt` のような文字会話ログから、LLM-onlyまたはMAVeRDの関係スコアCSVを生成する用途です。人間評価CSVがなくても実行できます。
+
 調節箇所は `relation_estimator_from_txt.py` 上部です。
 
 ```python
+INPUT_FILE = "estimation_accuracy/conversation.txt"
+OUTPUT_FILE = "estimation_accuracy/relation_scores.csv"
 LLM_MODEL = "gpt-4.1"
 USE_EMA = True
 GAMMA = 0.8
@@ -142,6 +198,8 @@ MAX_HISTORY_SESSIONS = 3
 MAX_HISTORY_HUMAN = 9
 NUM_TRIALS = 5
 ```
+
+`USE_EMA = True` なら MAVeRD、`USE_EMA = False` ならEMAなしのLLM-onlyとして出力します。
 
 `LLM_MODEL = None` にした場合は `config.local.yaml` / 環境変数側の relation model 設定を使用します。関係推定時の temperature は `config.local.yaml` の `llm.relation_temperature` で調節します。
 
