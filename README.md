@@ -63,6 +63,23 @@ IEEE Access再投稿向けの比較実験は `evaluate_baselines.py` で実行�
 - LLM + SMA
 - MAVeRD
 
+### どちらの実行ファイルを使うか
+
+目的によって、実行するファイルと入力設定が異なります。
+
+| 目的 | 実行コマンド | 入力設定 | 人間評価CSV |
+| --- | --- | --- | --- |
+| MAVeRDまたはLLM-onlyだけを単体実行する | `python3 relation_estimator_from_txt.py` | `relation_estimator_from_txt.py` 上部の `INPUT_FILE` | 不要 |
+| 6手法をまとめて比較し、MAE / Pearsonを算出する | `python3 evaluate_baselines.py` | `evaluation_utils.py` の `DEFAULT_EPISODES` | 必要 |
+
+`relation_estimator_from_txt.py` は従来からある単体実行用スクリプトです。今回追加した `evaluate_baselines.py` は、既存の LLM-only / MAVeRD の実装を変更せずに追加ベースラインと比較するため、別の実行ファイルとして作成しています。
+
+この2つは入力ファイルの設定を共有していません。たとえば `evaluation_utils.py` の `DEFAULT_EPISODES` に `conversation1.txt` を設定していても、`relation_estimator_from_txt.py` はその設定を参照せず、自身の `INPUT_FILE` を読みます。初期設定のまま単体実行する場合は `estimation_accuracy/conversation.txt` が必要です。`conversation1.txt` を単体実行したい場合は、`relation_estimator_from_txt.py` の設定を次のように変更します。
+
+```python
+INPUT_FILE = "estimation_accuracy/conversation1.txt"
+```
+
 ### 文字で作成した会話ログを使う場合
 音声認識を使わず、手入力・生成・文字起こし済みの会話を評価したい場合は、会話を `.txt` に保存して読み込ませます。会話ファイルは1行1発話で、必ず以下の形式にしてください。
 
