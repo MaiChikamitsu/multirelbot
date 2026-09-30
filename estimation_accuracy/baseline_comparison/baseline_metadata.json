@@ -1,0 +1,58 @@
+{
+  "created_at": "2026-09-27T13:50:08",
+  "setting": "controlled_comparison",
+  "raw_score_cache": "estimation_accuracy/baseline_comparison/raw_scores_cache.json",
+  "predictions_file": "estimation_accuracy/baseline_comparison/baseline_predictions.csv",
+  "evaluation": {
+    "status": "SKIPPED",
+    "reasons": [
+      "Episode1: conversation and human labels do not match. The conversation produces 29 rounds (87 pair labels), but estimation_accuracy/human1.csv contains 18 labels. MAE and Pearson were skipped."
+    ]
+  },
+  "llm_model": "gpt-5-chat",
+  "context_length_max_history_human": 6,
+  "num_trials": 10,
+  "sma_window_k": 3,
+  "maverd_gamma": 0.8,
+  "maverd_max_history_sessions": 3,
+  "random_seed": null,
+  "methods": [
+    {
+      "method": "Interaction Frequency",
+      "model_or_version": "structure_frequency_neutral_v1",
+      "score_policy": "signed score is neutral because frequency has no valence; intensity saved as auxiliary metadata"
+    },
+    {
+      "method": "Sentiment-based",
+      "model_or_version": "target_lexicon_rule_based_v1",
+      "input": "target-specific utterance clauses",
+      "output": "pair score in [-1, 1]",
+      "aggregation": "mean of directional target sentiment evidence for both directions"
+    },
+    {
+      "method": "Stance-based",
+      "model_or_version": "target_lexicon_rule_based_v1",
+      "input": "target-specific utterance clauses",
+      "output": "pair score in [-1, 1]",
+      "aggregation": "mean of directional target stance evidence for both directions"
+    },
+    {
+      "method": "LLM-only",
+      "model_or_version": "gpt-5-chat",
+      "source": "existing estimate_relation_once raw_scores without smoothing"
+    },
+    {
+      "method": "LLM + SMA",
+      "model_or_version": "simple_moving_average_v1",
+      "window_k": 3,
+      "source": "same raw_scores as LLM-only and MAVeRD"
+    },
+    {
+      "method": "MAVeRD",
+      "model_or_version": "existing EMAScorer DIWS/EMA",
+      "gamma": 0.8,
+      "max_history_sessions": 3,
+      "source": "same raw_scores as LLM-only and SMA"
+    }
+  ]
+}

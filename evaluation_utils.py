@@ -24,12 +24,12 @@ DEFAULT_EPISODES = [
         name="Episode1",
         conversation_file="estimation_accuracy/conversation1.txt",
         human_file="estimation_accuracy/human1.csv",
-    ),
-    EpisodeConfig(
-        name="Episode2",
-        conversation_file="estimation_accuracy/conversation2.txt",
-        human_file="estimation_accuracy/human2.csv",
-    ),
+    )
+    # EpisodeConfig(
+    #     name="Episode2",
+    #     conversation_file="estimation_accuracy/conversation2.txt",
+    #     human_file="estimation_accuracy/human2.csv",
+    # ),
 ]
 
 
@@ -123,7 +123,11 @@ def build_summary_row(
     metrics_by_episode: Mapping[str, Mapping[str, float]],
     episode_names: Sequence[str],
 ) -> Dict[str, float | str]:
-    row: Dict[str, float | str] = {"Method": method}
+    row: Dict[str, float | str] = {
+        "Method": method,
+        "Evaluation_Status": "EVALUATED",
+        "Evaluation_Reason": "",
+    }
     maes = []
     pearsons = []
     for episode_name in episode_names:
@@ -173,7 +177,7 @@ def build_detail_rows(
 
 def write_summary_csv(path: str, rows: Sequence[Mapping[str, object]], episode_names: Sequence[str]) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    fieldnames = ["Method"]
+    fieldnames = ["Method", "Evaluation_Status", "Evaluation_Reason"]
     for episode_name in episode_names:
         suffix = episode_suffix(episode_name)
         fieldnames.extend([f"MAE_{suffix}", f"Pearson_{suffix}"])
@@ -205,4 +209,3 @@ def write_detail_csv(path: str, rows: Sequence[Mapping[str, object]]) -> None:
         writer.writeheader()
         for row in rows:
             writer.writerow(row)
-

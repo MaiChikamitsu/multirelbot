@@ -17,15 +17,22 @@ from azure_clients import get_azure_chat_completion_client, build_chat_completio
 from log_filtering import filter_logs_by_human_count
 
 # ========== 設定 ==========
-INPUT_FILE = "estimation_accuracy/conversation.txt"
-OUTPUT_FILE = "estimation_accuracy/relation_scores.csv"
-LLM_MODEL = "gpt-4.1"  # Noneの場合はconfig.yamlのrelation_modelを使用
+INPUT_FILE = "estimation_accuracy/conversation1.txt"
+OUTPUT_FILE = "estimation_accuracy/relation_scores_es.csv"
+# 変更前: LLM_MODEL = "gpt-4.1"
+# 変更理由: 現在のAzureリソースに同名のdeploymentがなく404になるため、.envのAZURE_MODELを使用する。
+LLM_MODEL = None
 USE_EMA = True
 GAMMA = 0.8  # 時間減衰率（過去の発話の重みを減衰）
 MAX_HISTORY_SESSIONS = 3  # 過去何セッション分の発話数を参照するか
 MAX_HISTORY_HUMAN = 9  # 人間発話数（その間のロボット発話も含む）をどれくらいLLMに入れるか
+# 変更前: ソート後の最後の参加者（A/B/CならC）が発言するたびにセッションを区切っていた。
+# 変更理由: 論文の定量評価では、話者順ではなく人間3発話ごとに推定すると定義しているため。
+K_STEP = 3  # 関係推定を行う間隔。実会話の6発話条件を再現する場合は6にする。
 DEBUG = True
-NUM_TRIALS = 5  # 各推定を繰り返す回数
+# 変更前: NUM_TRIALS = 5
+# 変更理由: 論文の定量評価では同一条件を10回繰り返して平均するため。
+NUM_TRIALS = 10
 # ==========================
 
 
@@ -174,28 +181,36 @@ def detect_participants(logs: List[Dict[str, str]]) -> List[str]:
     return sorted(list(participants))
 
 
-def split_into_rounds(logs: List[Dict[str, str]], participants: List[str]) -> List[int]:
+def split_into_rounds(
+    logs: List[Dict[str, str]],
+    participants: List[str],
+    k_step: int = 3,
+) -> List[int]:
     """
     ラウンド終了位置（推定タイミング）のインデックスリストを返す
 
-    ラウンド: 全参加者が1回ずつ発言した単位
-    3人なら3発話ごと、4人なら4発話ごとに推定
+    ロボット発話を除く人間発話が k_step 件蓄積されるごとに推定する。
+    論文の定量評価では k_step=3、実会話条件では k_step=6 を用いる。
 
     Args:
         logs: 会話ログリスト
         participants: 参加者リスト
+        k_step: 関係推定を行う人間発話間隔
 
     Returns:
         推定を行うログインデックスのリスト
     """
-    round_end_indices = []
-    num_participants = len(participants)
-    last_participant = participants[-1]  # 参加者リストの最後（CまたはD）
+    if k_step <= 0:
+        raise ValueError("k_step must be a positive integer")
 
+    round_end_indices = []
+    participant_set = set(participants)
+    human_utterance_count = 0
     for i, log in enumerate(logs):
-        speaker = log['speaker']
-        if speaker == last_participant:
-            # 最後の参加者が発言したタイミングをラウンド終了とする
+        if log['speaker'] not in participant_set:
+            continue
+        human_utterance_count += 1
+        if human_utterance_count % k_step == 0:
             round_end_indices.append(i)
 
     return round_end_indices
@@ -389,6 +404,11 @@ def main():
     """メイン処理"""
     # 設定読み込み
     _CFG = config.get_config()
+    configured_relation_model = (
+        getattr(_CFG.llm, "relation_model", None)
+        or getattr(_CFG.llm, "azure_model", None)
+    )
+    effective_llm_model = LLM_MODEL or configured_relation_model
 
     if DEBUG:
         print("=" * 80)
@@ -397,11 +417,12 @@ def main():
         print(f"\n📋 設定:")
         print(f"  入力ファイル: {INPUT_FILE}")
         print(f"  出力ファイル: {OUTPUT_FILE}")
-        print(f"  LLMモデル: {LLM_MODEL if LLM_MODEL else '(config.yamlのrelation_model)'}")
+        print(f"  LLMモデル: {effective_llm_model}")
         print(f"  EMA使用: {USE_EMA}")
         print(f"  Gamma (時間減衰率): {GAMMA}")
         print(f"  履歴セッション数: {MAX_HISTORY_SESSIONS}")
         print(f"  会話履歴長: {MAX_HISTORY_HUMAN} 人間発話")
+        print(f"  セッション間隔: {K_STEP} 人間発話")
         print(f"  試行回数: {NUM_TRIALS}")
 
     # txtファイルを読み込み
@@ -426,7 +447,7 @@ def main():
             print(f"  - {pair[0]}-{pair[1]}")
 
     # ラウンド分割
-    round_end_indices = split_into_rounds(logs, participants)
+    round_end_indices = split_into_rounds(logs, participants, K_STEP)
     if DEBUG:
         print(f"\n🔄 ラウンド数: {len(round_end_indices)}")
         for idx, end_idx in enumerate(round_end_indices, 1):
@@ -501,7 +522,8 @@ def main():
         writer = csv.writer(csvfile)
 
         # ヘッダー行
-        writer.writerow(['ペア-ラウンド', '試行1', '試行2', '試行3', '試行4', '試行5', '平均'])
+        trial_headers = [f'試行{i}' for i in range(1, NUM_TRIALS + 1)]
+        writer.writerow(['ペア-ラウンド'] + trial_headers + ['平均'])
 
         # ペアごとにまとめて出力
         for pair in pairs:
@@ -511,7 +533,7 @@ def main():
             for round_idx in range(len(round_end_indices)):
                 row_label = f"{round_idx + 1}-{pair_name}"
 
-                # 5試行分のスコア
+                # NUM_TRIALS試行分のスコア
                 trial_scores = [
                     round(results[pair][trial_idx][round_idx], 1)
                     for trial_idx in range(NUM_TRIALS)
@@ -526,8 +548,8 @@ def main():
         print(f"✅ 完了: {OUTPUT_FILE} を出力しました")
         print(f"\n📊 出力形式:")
         print(f"  - A列: ペア-ラウンド（例: 1-A-B, 2-A-B, ...）")
-        print(f"  - B〜F列: 5回の試行結果（EMA適用済み）")
-        print(f"  - G列: 平均値")
+        print(f"  - 続く{NUM_TRIALS}列: 各試行結果（EMA適用済み）")
+        print(f"  - 最終列: 平均値")
 
 
 if __name__ == "__main__":

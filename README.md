@@ -136,9 +136,8 @@ estimation_accuracy/human2.csv
 ```bash
 python3 evaluate_baselines.py \
   --output-dir estimation_accuracy/baseline_comparison \
-  --llm-model gpt-4.1 \
   --max-history-human 6 \
-  --num-trials 5 \
+  --num-trials 10 \
   --sma-window 3 \
   --gamma 0.8 \
   --max-history-sessions 3
@@ -146,15 +145,20 @@ python3 evaluate_baselines.py \
 
 出力ファイル:
 
+- `estimation_accuracy/baseline_comparison/baseline_predictions.csv`: 6手法の episode / round / pair ごとの予測値。人手評価がなくても出力
 - `estimation_accuracy/baseline_comparison/baseline_summary.csv`: 手法ごとの MAE / Pearson summary
 - `estimation_accuracy/baseline_comparison/baseline_details.csv`: episode / round / pair ごとの prediction, human ground truth, error
 - `estimation_accuracy/baseline_comparison/baseline_metadata.json`: 実行条件、モデル、パラメータ
 - `estimation_accuracy/baseline_comparison/raw_scores_cache.json`: LLM-only / SMA / MAVeRD で共有する raw LLM score
 
+会話ファイルと人間評価CSVのセッション・ペアが一致しない場合も、6手法の推定は続行して `baseline_predictions.csv` に保存します。この場合、MAE / Pearsonの計算は行わず、ターミナルと `baseline_summary.csv` に `SKIPPED` および理由を記録します。
+
+通常実行でも、現在の処理段階、episode、round、LLM試行の進捗を簡潔に表示します。各roundの行に表示される `.` は、LLM試行が1回完了したことを表します。LLMの生スコアなども確認する場合は `--debug` を付けます。
+
 ### MAVeRDやLLM条件の調節
 `evaluate_baselines.py` では、主に以下の引数で調節します。
 
-- `--llm-model`: 関係推定に使う GPT / Azure deployment 名
+- `--llm-model`: 関係推定に使う GPT / Azure deployment 名。省略時は `.env` の `RELATION_MODEL`、なければ `AZURE_MODEL` を使用
 - `--max-history-human`: 関係推定LLMに入れる人間発話履歴数
 - `--num-trials`: LLM推定の試行回数
 - `--gamma`: MAVeRD の DIWS/EMA 時間減衰率
@@ -168,7 +172,7 @@ python3 evaluate_baselines.py \
   --output-dir estimation_accuracy/baseline_comparison_gpt5_g075 \
   --llm-model gpt-5-chat \
   --max-history-human 9 \
-  --num-trials 5 \
+  --num-trials 10 \
   --sma-window 3 \
   --gamma 0.75 \
   --max-history-sessions 3 \

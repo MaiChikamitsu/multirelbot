@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import os
 from collections import defaultdict
@@ -25,8 +26,10 @@ from evaluation_utils import (
     EpisodeConfig,
     build_detail_rows,
     build_summary_row,
+    episode_suffix,
     evaluate_predictions,
     load_human_data,
+    parse_prediction_key,
     prediction_key,
     round_scores_to_predictions,
     write_detail_csv,
@@ -67,13 +70,31 @@ def load_episode_inputs(episode_configs: Sequence[EpisodeConfig]) -> Dict[str, d
         logs = parse_conversation_file(episode.conversation_file)
         participants = detect_participants(logs)
         rounds = split_into_rounds(logs, participants)
+        pairs = iter_pairs(participants)
+        human_data = load_human_data(episode.human_file)
+        expected_human_keys = {
+            prediction_key(round_number, pair)
+            for round_number in range(1, len(rounds) + 1)
+            for pair in pairs
+        }
+        actual_human_keys = set(human_data)
+        evaluation_skip_reason = None
+        if actual_human_keys != expected_human_keys:
+            evaluation_skip_reason = (
+                f"{episode.name}: conversation and human labels do not match. "
+                f"The conversation produces {len(rounds)} rounds "
+                f"({len(expected_human_keys)} pair labels), but "
+                f"{episode.human_file} contains {len(actual_human_keys)} labels. "
+                "MAE and Pearson were skipped."
+            )
         episodes[episode.name] = {
             "config": episode,
             "logs": logs,
             "participants": participants,
-            "pairs": iter_pairs(participants),
+            "pairs": pairs,
             "round_end_indices": rounds,
-            "human_data": load_human_data(episode.human_file),
+            "human_data": human_data,
+            "evaluation_skip_reason": evaluation_skip_reason,
         }
     return episodes
 
@@ -112,12 +133,22 @@ def generate_raw_score_cache(
         "metadata": metadata,
         "episodes": {},
     }
+    total_calls = sum(
+        len(episode["round_end_indices"]) * args.num_trials
+        for episode in episodes.values()
+    )
+    completed_calls = 0
+    print(
+        f"[2/4] Generating shared raw LLM scores: {total_calls} API calls",
+        flush=True,
+    )
 
     for episode_name, episode in episodes.items():
         episode_cache = {
             "participants": episode["participants"],
             "rounds": [],
         }
+        total_rounds = len(episode["round_end_indices"])
         for round_number, end_index in enumerate(episode["round_end_indices"], start=1):
             round_logs = episode["logs"][: end_index + 1]
             round_entry = {
@@ -126,6 +157,11 @@ def generate_raw_score_cache(
                 "utterance_counts": utterance_counts(round_logs, episode["participants"]),
                 "trials": [],
             }
+            print(
+                f"  {episode_name} round {round_number}/{total_rounds}: ",
+                end="",
+                flush=True,
+            )
             for _ in range(args.num_trials):
                 raw_scores = estimate_relation_once(
                     round_logs,
@@ -135,6 +171,12 @@ def generate_raw_score_cache(
                     cfg,
                 )
                 round_entry["trials"].append(serialize_scores(raw_scores))
+                completed_calls += 1
+                print(".", end="", flush=True)
+            print(
+                f" done ({completed_calls}/{total_calls} calls)",
+                flush=True,
+            )
             episode_cache["rounds"].append(round_entry)
         cache["episodes"][episode_name] = episode_cache
 
@@ -154,6 +196,7 @@ def load_or_generate_raw_score_cache(
         with open(args.raw_cache, encoding="utf-8") as f:
             cache = json.load(f)
         if cache_matches(cache, expected) or args.allow_cache_mismatch:
+            print(f"[2/4] Reusing raw LLM score cache: {args.raw_cache}", flush=True)
             return cache
         raise ValueError(
             "Raw score cache metadata does not match this run. "
@@ -176,7 +219,12 @@ def build_deterministic_predictions(
         STANCE_NAME: {},
     }
 
+    print("[1/4] Running deterministic baselines", flush=True)
     for episode_name, episode in episodes.items():
+        print(
+            f"  {episode_name}: {len(episode['round_end_indices'])} rounds",
+            flush=True,
+        )
         method_round_scores = {
             INTERACTION_NAME: [],
             SENTIMENT_NAME: [],
@@ -295,11 +343,71 @@ def build_maverd_predictions_from_cache(
     return predictions
 
 
-def write_metadata(path: str, args: argparse.Namespace, raw_cache_path: str) -> None:
+def build_prediction_rows(
+    predictions_by_method: Mapping[str, Mapping[str, Mapping[str, float]]],
+    extra_by_method: Mapping[str, Mapping[str, Mapping[str, dict]]],
+) -> List[Dict[str, object]]:
+    rows = []
+    for method, episode_predictions in predictions_by_method.items():
+        for episode_name, predictions in episode_predictions.items():
+            extras = extra_by_method.get(method, {}).get(episode_name, {})
+            for key in sorted(predictions, key=parse_prediction_key):
+                round_number, pair = parse_prediction_key(key)
+                extra = dict(extras.get(key, {}))
+                rows.append(
+                    {
+                        "Method": method,
+                        "Episode": episode_name,
+                        "Round": round_number,
+                        "Pair": pair_to_label(pair),
+                        "Prediction": predictions[key],
+                        "Interaction_Intensity": extra.pop("interaction_intensity", ""),
+                        "Interaction_Count": extra.pop("interaction_count", ""),
+                        "Directional_Counts": json.dumps(
+                            extra.pop("directional_counts", {}), ensure_ascii=False
+                        ),
+                        "Extra": json.dumps(extra, ensure_ascii=False, sort_keys=True),
+                    }
+                )
+    return rows
+
+
+def write_prediction_csv(path: str, rows: Sequence[Mapping[str, object]]) -> None:
+    fieldnames = [
+        "Method",
+        "Episode",
+        "Round",
+        "Pair",
+        "Prediction",
+        "Interaction_Intensity",
+        "Interaction_Count",
+        "Directional_Counts",
+        "Extra",
+    ]
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def write_metadata(
+    path: str,
+    args: argparse.Namespace,
+    raw_cache_path: str,
+    evaluation_status: str,
+    evaluation_reasons: Sequence[str],
+    predictions_path: str,
+) -> None:
     metadata = {
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "setting": "controlled_comparison",
         "raw_score_cache": raw_cache_path,
+        "predictions_file": predictions_path,
+        "evaluation": {
+            "status": evaluation_status,
+            "reasons": list(evaluation_reasons),
+        },
         "llm_model": args.llm_model,
         "context_length_max_history_human": args.max_history_human,
         "num_trials": args.num_trials,
@@ -355,9 +463,13 @@ def write_metadata(path: str, args: argparse.Namespace, raw_cache_path: str) -> 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run controlled baseline comparison for MAVeRD.")
     parser.add_argument("--output-dir", default="estimation_accuracy/baseline_comparison")
-    parser.add_argument("--llm-model", default="gpt-4.1")
+    parser.add_argument(
+        "--llm-model",
+        default=None,
+        help="Azure deployment name. Omit to use RELATION_MODEL or AZURE_MODEL.",
+    )
     parser.add_argument("--max-history-human", type=int, default=6)
-    parser.add_argument("--num-trials", type=int, default=5)
+    parser.add_argument("--num-trials", type=int, default=10)
     parser.add_argument("--sma-window", type=int, default=3)
     parser.add_argument("--gamma", type=float, default=0.8)
     parser.add_argument("--max-history-sessions", type=int, default=3)
@@ -375,13 +487,36 @@ def main() -> None:
 
     relation_estimator.DEBUG = args.debug
     cfg = config.get_config()
+    args.llm_model = (
+        args.llm_model
+        or getattr(cfg.llm, "relation_model", None)
+        or getattr(cfg.llm, "azure_model", None)
+    )
+    if not args.llm_model:
+        raise ValueError(
+            "No relation model deployment is configured. Set RELATION_MODEL or AZURE_MODEL, "
+            "or pass --llm-model."
+        )
+    print("Baseline comparison started", flush=True)
+    print(f"  model: {args.llm_model}", flush=True)
+    print(f"  context: {args.max_history_human} human utterances", flush=True)
+    print(f"  trials: {args.num_trials}", flush=True)
+    print(f"  output: {args.output_dir}", flush=True)
     episodes = load_episode_inputs(DEFAULT_EPISODES)
     episode_names = list(episodes.keys())
     human_by_episode = {name: episode["human_data"] for name, episode in episodes.items()}
+    for episode_name, episode in episodes.items():
+        status = "SKIPPED" if episode["evaluation_skip_reason"] else "READY"
+        print(
+            f"  {episode_name}: {len(episode['round_end_indices'])} rounds, "
+            f"human evaluation {status}",
+            flush=True,
+        )
 
     deterministic_predictions, extra_by_method = build_deterministic_predictions(episodes)
     raw_cache = load_or_generate_raw_score_cache(episodes, args, cfg)
 
+    print("[3/4] Building LLM-only, SMA, and MAVeRD predictions", flush=True)
     predictions_by_method = dict(deterministic_predictions)
     predictions_by_method[LLM_ONLY_NAME] = build_llm_only_predictions_from_cache(
         episodes, raw_cache, args.num_trials
@@ -393,30 +528,67 @@ def main() -> None:
         episodes, raw_cache, args.num_trials, args.gamma, args.max_history_sessions
     )
 
+    print("[4/4] Writing result files", flush=True)
+    prediction_rows = build_prediction_rows(predictions_by_method, extra_by_method)
+    predictions_path = os.path.join(args.output_dir, "baseline_predictions.csv")
+    write_prediction_csv(predictions_path, prediction_rows)
+
+    evaluation_reasons = [
+        episode["evaluation_skip_reason"]
+        for episode in episodes.values()
+        if episode["evaluation_skip_reason"]
+    ]
+    evaluation_status = "SKIPPED" if evaluation_reasons else "EVALUATED"
     summary_rows = []
     detail_rows = []
-    for method, method_predictions in predictions_by_method.items():
-        metrics = evaluate_predictions(method_predictions, human_by_episode)
-        summary_rows.append(build_summary_row(method, metrics, episode_names))
-        for episode_name in episode_names:
-            detail_rows.extend(
-                build_detail_rows(
-                    method,
-                    episode_name,
-                    method_predictions[episode_name],
-                    human_by_episode[episode_name],
-                    extra_by_method.get(method, {}).get(episode_name, {}),
+    if evaluation_status == "EVALUATED":
+        for method, method_predictions in predictions_by_method.items():
+            metrics = evaluate_predictions(method_predictions, human_by_episode)
+            summary_rows.append(build_summary_row(method, metrics, episode_names))
+            for episode_name in episode_names:
+                detail_rows.extend(
+                    build_detail_rows(
+                        method,
+                        episode_name,
+                        method_predictions[episode_name],
+                        human_by_episode[episode_name],
+                        extra_by_method.get(method, {}).get(episode_name, {}),
+                    )
                 )
-            )
+        summary_rows.sort(key=lambda row: row["MAE_Avg"])
+    else:
+        reason = " ".join(evaluation_reasons)
+        for method in predictions_by_method:
+            row: Dict[str, object] = {
+                "Method": method,
+                "Evaluation_Status": "SKIPPED",
+                "Evaluation_Reason": reason,
+            }
+            for episode_name in episode_names:
+                suffix = episode_suffix(episode_name)
+                row[f"MAE_{suffix}"] = ""
+                row[f"Pearson_{suffix}"] = ""
+            row["MAE_Avg"] = ""
+            row["Pearson_Avg"] = ""
+            summary_rows.append(row)
 
-    summary_rows.sort(key=lambda row: row["MAE_Avg"])
     summary_path = os.path.join(args.output_dir, "baseline_summary.csv")
     detail_path = os.path.join(args.output_dir, "baseline_details.csv")
     metadata_path = os.path.join(args.output_dir, "baseline_metadata.json")
     write_summary_csv(summary_path, summary_rows, episode_names)
     write_detail_csv(detail_path, detail_rows)
-    write_metadata(metadata_path, args, args.raw_cache)
+    write_metadata(
+        metadata_path,
+        args,
+        args.raw_cache,
+        evaluation_status,
+        evaluation_reasons,
+        predictions_path,
+    )
 
+    print(f"Saved predictions: {predictions_path}")
+    if evaluation_status == "SKIPPED":
+        print("Evaluation skipped: " + " ".join(evaluation_reasons))
     print(f"Saved summary: {summary_path}")
     print(f"Saved details: {detail_path}")
     print(f"Saved metadata: {metadata_path}")

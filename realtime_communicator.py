@@ -1090,7 +1090,8 @@ def on_conversation_update(data):
     print("🤖 ロボットのログ記録")
 
 
-try_connect_socketio()
+if os.getenv("MULTIRELBOT_SKIP_SOCKETIO") != "1":
+    try_connect_socketio()
 if __name__ == "__main__":
     # config.local.yamlから話者情報を読み込んで自動登録
     speakers = _CFG.participants.get("speakers", {})

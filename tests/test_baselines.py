@@ -10,10 +10,12 @@ from baselines.interaction_frequency import (
 from baselines.sentiment import estimate_sentiment
 from baselines.sma import SimpleMovingAverageScorer, smooth_raw_score_rounds
 from baselines.stance import estimate_stance
-from evaluation_utils import prediction_key, round_scores_to_predictions
+from evaluation_utils import EpisodeConfig, prediction_key, round_scores_to_predictions
 from evaluate_baselines import (
+    build_prediction_rows,
     build_llm_only_predictions_from_cache,
     deserialize_scores,
+    load_episode_inputs,
     serialize_scores,
 )
 from relation_estimator_from_txt import EMAScorer, split_into_rounds
@@ -27,17 +29,18 @@ def test_pair_generation_and_normalization():
     assert normalize_pair("C", "A") == ("A", "C")
 
 
-def test_round_split_matches_existing_maverd_timing():
+def test_round_split_uses_fixed_human_utterance_interval():
     logs = [
         {"speaker": "A", "utterance": "a1"},
-        {"speaker": "B", "utterance": "b1"},
         {"speaker": "C", "utterance": "c1"},
         {"speaker": "ロボット", "utterance": "r1"},
+        {"speaker": "B", "utterance": "b1"},
         {"speaker": "A", "utterance": "a2"},
-        {"speaker": "B", "utterance": "b2"},
+        {"speaker": "A", "utterance": "a3"},
         {"speaker": "C", "utterance": "c2"},
     ]
-    assert split_into_rounds(logs, PARTICIPANTS) == [2, 6]
+    assert split_into_rounds(logs, PARTICIPANTS) == [3, 6]
+    assert split_into_rounds(logs, PARTICIPANTS, k_step=6) == [6]
 
 
 def test_all_rule_based_scores_stay_in_range():
@@ -141,3 +144,36 @@ def test_existing_ema_formula_regression():
 def test_round_scores_to_predictions_uses_existing_pair_key_shape():
     predictions = round_scores_to_predictions([{("A", "B"): 0.1}])
     assert predictions[prediction_key(1, ("A", "B"))] == 0.1
+
+
+def test_mismatched_human_labels_mark_evaluation_for_skip(tmp_path):
+    conversation_path = tmp_path / "conversation.txt"
+    conversation_path.write_text(
+        "[A] a1\n[B] b1\n[C] c1\n[A] a2\n[B] b2\n[C] c2\n",
+        encoding="utf-8",
+    )
+    human_path = tmp_path / "human.csv"
+    human_path.write_text(
+        "label,episode,section,pair,mean\n"
+        "1-1-A-B,1,1,A-B,0.1\n"
+        "1-1-A-C,1,1,A-C,0.2\n"
+        "1-1-B-C,1,1,B-C,0.3\n",
+        encoding="utf-8",
+    )
+
+    episodes = load_episode_inputs(
+        [EpisodeConfig("Episode1", str(conversation_path), str(human_path))]
+    )
+
+    assert episodes["Episode1"]["evaluation_skip_reason"] is not None
+    assert len(episodes["Episode1"]["round_end_indices"]) == 2
+
+
+def test_prediction_rows_do_not_require_human_labels():
+    rows = build_prediction_rows(
+        {"LLM-only": {"Episode1": {"1-A-B": 0.4}}},
+        {},
+    )
+
+    assert rows[0]["Method"] == "LLM-only"
+    assert rows[0]["Prediction"] == 0.4
