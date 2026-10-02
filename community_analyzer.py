@@ -17,13 +17,15 @@ from datetime import datetime
 import config
 from azure_clients import get_azure_chat_completion_client, build_chat_completion_params
 from log_filtering import filter_logs_by_human_count
+# ここから追加
+from ingroup_detector import detect_ingroup_outgroup
 
 # Pepper設定（config.local.yamlから読み込み）
 load_dotenv()
 _CFG_LOADED = config.get_config()
 # Pepperの設定
-pepper_ip = getattr(_CFG_LOADED.pepper, "ip", "192.168.11.13")  # PepperのIPアドレス
-pepper_port = getattr(_CFG_LOADED.pepper, "port", 2002)  # Android アプリのポート
+pepper_ip = getattr(_CFG_LOADED.pepper, "ip", "192.168.11.15")  # PepperのIPアドレス
+pepper_port = getattr(_CFG_LOADED.pepper, "port", 2003)  # Android アプリのポート
 use_robot = getattr(_CFG_LOADED.pepper, "use_robot", True)  # Pepperを使用するかどうか
 robot_included = getattr(
     _CFG_LOADED.pepper, "robot_included", True
@@ -167,6 +169,16 @@ class CommunityAnalyzer:
 
         # GPTのスコアを取得
         gpt_scores = self._get_gpt_friendship_scores(session_logs, participants)
+
+        #ここから追加
+        group_structure = detect_ingroup_outgroup(
+            session.logs,
+            gpt_scores
+        )
+
+        print(group_structure)
+
+        #ここまで追加
 
         # 履歴に基づくEMAを同期的に計算（simulation用）
         self.last_gpt_scores = gpt_scores

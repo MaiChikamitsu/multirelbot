@@ -1,4 +1,6 @@
 .env
+.venv310/
+gcloud-key.json
 __pycache__
 communityEnv
 logs

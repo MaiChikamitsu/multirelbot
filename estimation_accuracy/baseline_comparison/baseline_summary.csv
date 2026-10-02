@@ -1,0 +1,7 @@
+Method,Evaluation_Status,Evaluation_Reason,MAE_Ep1,Pearson_Ep1,MAE_Avg,Pearson_Avg
+Interaction Frequency,SKIPPED,"Episode1: conversation and human labels do not match. The conversation produces 29 rounds (87 pair labels), but estimation_accuracy/human1.csv contains 18 labels. MAE and Pearson were skipped.",,,,
+Sentiment-based,SKIPPED,"Episode1: conversation and human labels do not match. The conversation produces 29 rounds (87 pair labels), but estimation_accuracy/human1.csv contains 18 labels. MAE and Pearson were skipped.",,,,
+Stance-based,SKIPPED,"Episode1: conversation and human labels do not match. The conversation produces 29 rounds (87 pair labels), but estimation_accuracy/human1.csv contains 18 labels. MAE and Pearson were skipped.",,,,
+LLM-only,SKIPPED,"Episode1: conversation and human labels do not match. The conversation produces 29 rounds (87 pair labels), but estimation_accuracy/human1.csv contains 18 labels. MAE and Pearson were skipped.",,,,
+LLM + SMA,SKIPPED,"Episode1: conversation and human labels do not match. The conversation produces 29 rounds (87 pair labels), but estimation_accuracy/human1.csv contains 18 labels. MAE and Pearson were skipped.",,,,
+MAVeRD,SKIPPED,"Episode1: conversation and human labels do not match. The conversation produces 29 rounds (87 pair labels), but estimation_accuracy/human1.csv contains 18 labels. MAE and Pearson were skipped.",,,,
