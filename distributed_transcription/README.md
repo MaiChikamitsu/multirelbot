@@ -86,7 +86,7 @@ python participant_client.py \
   --silence-seconds 1.0
 ```
 
-入力デバイスを指定したい場合は、sounddevice のデバイス番号または名前を `--input-device` に指定します。
+入力デバイスを指定したい場合は、sounddevice の入力デバイス番号（整数）を `--input-device` に指定します。
 
 ```bash
 python participant_client.py --speaker Aさん --host 192.168.1.10 --mode mic --input-device 1
@@ -100,7 +100,13 @@ python participant_client.py --speaker Aさん --host 192.168.1.10 --mode mic --
 
 ## 再接続
 
-クライアントはホストPCへ接続できない場合、既定で2秒ごとに再接続を試みます。通信が一時的に切れた場合も、次の送信時に再接続して同じ発話を送り直します。
+録音 → 音声queue → 文字起こし → 送信queue → TCP送信の3スレッド構成です。送信スレッドだけが接続・再接続を担当するため、ホストに接続できなくても録音と認識を継続します。既定で2秒ごとに再試行し、復旧後は保留中の結果をFIFO順で送ります。`client_time` は送信queueへ登録した時刻で、再送時も変わりません。
+
+送信queueは既定1000件（別途、送信中1件）。`--send-queue-size` で変更できます。満杯時は新しい結果を破棄しstderrに警告します。保留結果はメモリ内のみです。TCPには受信確認の仕組みがないため、切断タイミングによる重複や未達は完全には防げません。
+
+音声queueは録音をブロックせず発話を保持するため上限を設けていません。20件に達すると警告します。認識が長時間追いつかない場合はメモリ使用量が増えるため、軽いモデルを選び実験前に連続発話で確認してください。
+
+Ctrl+Cで録音を停止し、発話途中の音声と音声queueを最後まで認識します。その後、最大2秒間送信完了を待ち、再接続待機を解除して終了します。実行中のsocket操作は `--socket-timeout`（既定5秒）まで待つ場合があります。Whisperの処理は安全に強制中断できないため、音声の残量によって終了まで時間がかかります。終了時に残る未送信結果は破棄し件数をstderrに表示します。USBマイク抜去などの録音エラーは表示して終了し、別のマイクへ自動切替はしません。
 
 ## Zoomとの併用
 
@@ -123,3 +129,33 @@ python participant_client.py --speaker Cさん --host 127.0.0.1 --port 50007 --m
 ```
 
 保存結果は `conversaion.txt` です。ファイル名は依頼内容に合わせて `conversation.txt` ではなく `conversaion.txt` にしています。
+
+## USBマイクと音量確認
+
+デバイス一覧を確認してUSBマイクの番号を指定してください。
+
+```bash
+python -m sounddevice
+python participant_client.py --speaker Bさん --host 10.32.1.16 --port 50007 --mode mic --input-device 1
+python participant_client.py --speaker Bさん --host 10.32.1.16 --port 50007 --mode mic --input-device 1 --show-level
+```
+
+起動時に番号・名前・入力チャンネル数・既定サンプルレートと実行設定をstderrへ表示します。番号未指定の場合も、起動時の既定入力の番号を解決して固定します。入力不可のデバイスや指定録音形式に非対応のデバイスはモデル読込前にエラーにします。デバイス番号は接続順によって変わり得るため、毎回表示された名前も確認してください。
+
+`--show-level` は約0.25秒ごと（読み取りチャンク以上の間隔）にmean absolute amplitude・RMS・dBFS・peakをstderrに表示します。既定OFFです。faster-whisperのVADも既定OFFで、必要な場合は `--whisper-vad-filter` を指定します。以前の `--no-vad-filter` も互換用に使用できます。
+
+## 検証とログ分離
+
+依存ライブラリやマイクを必要としない回帰テスト:
+
+```bash
+python -m unittest discover -s distributed_transcription -p 'test_participant_client.py' -v
+```
+
+上のコマンドはリポジトリルートで実行してください。CLIの整数/VAD、認識中の録音継続、認識エラー後の継続、Ctrl+C時の残音声処理、入力不可デバイス、通信復旧時の順序、queue満杯、保存内容を模擬テストします。
+
+実機では `--show-level` 付きで連続発話し、認識中も音量表示が続くことを確認してください。ホスト停止中にも認識が続き、再起動すると保留結果が届くこと、Ctrl+Cでマイクが解放されることも確認してください。再起動時に既存データを残す場合はホストに `--append` を指定します。
+
+クライアントの状態表示・警告・認識表示はすべてstderrへ出します。送信するJSONは従来どおり `speaker`・`text`・`client_time` のみです。ホストの専用保存処理は `[話者] 本文` だけを `conversaion.txt` に書き、デバッグ情報は保存しません。stdout/stderrのリダイレクト先を実験結果ファイルに指定しないでください。
+
+回帰テストは接続ログがstderrだけに存在すること、JSONのキーが上記3つだけであること、ホスト保存ファイルが認識結果だけであることを検証します。実機でもホストの `conversaion.txt` を開き、設定・音量・接続・警告が含まれないことを確認してください。第三者ライブラリ自身の表示はこのアプリの保存処理には入りません。
