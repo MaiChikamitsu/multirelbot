@@ -5,6 +5,7 @@ import json
 import tempfile
 import threading
 import unittest
+import wave
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -136,6 +137,25 @@ class ClientTests(unittest.TestCase):
             sd.InputStream.assert_called_once_with(
                 samplerate=16000, channels=1, dtype='float32', blocksize=4000, device=1)
             sd.InputStream.return_value.__exit__.assert_called_once()
+
+    def test_diagnostic_wav_format_and_unique_names(self):
+        try:
+            import numpy as np
+        except ImportError:
+            self.skipTest('numpy is needed for WAV test')
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp) / 'audio'
+            audio = np.array([0, 0.5, -0.5, 1, -1], dtype=np.float32)
+            first = client.save_diagnostic_audio(audio, directory, 16000)
+            second = client.save_diagnostic_audio(audio, directory, 16000)
+            self.assertNotEqual(first, second)
+            with wave.open(str(first), 'rb') as saved:
+                self.assertEqual(saved.getnchannels(), 1)
+                self.assertEqual(saved.getsampwidth(), 2)
+                self.assertEqual(saved.getframerate(), 16000)
+                self.assertEqual(saved.getnframes(), 5)
+                restored = np.frombuffer(saved.readframes(5), dtype='<i2') / 32767
+                np.testing.assert_allclose(restored, audio, atol=1 / 32767)
 
     def test_output_only_device_rejected(self):
         sd = Mock()

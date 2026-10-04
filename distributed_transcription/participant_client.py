@@ -7,6 +7,9 @@ import socket
 import sys
 import threading
 import time
+import wave
+from pathlib import Path
+from uuid import uuid4
 from datetime import datetime
 from typing import Any, Iterator, List, Optional
 
@@ -22,6 +25,22 @@ def join_worker(thread: threading.Thread) -> None:
             thread.join(timeout=0.1)
         except KeyboardInterrupt:
             debug("終了処理中です。残りの処理を待っています。")
+
+
+def save_diagnostic_audio(audio, directory: Path, sample_rate: int) -> Path:
+    """Save the exact segmented Whisper input, quantized to portable PCM16."""
+    import numpy as np
+
+    directory.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    path = directory / f"utterance_{stamp}_{uuid4().hex[:8]}.wav"
+    pcm = np.rint(np.clip(np.asarray(audio), -1, 1) * 32767).astype("<i2")
+    with wave.open(str(path), "wb") as output:
+        output.setnchannels(1)
+        output.setsampwidth(2)
+        output.setframerate(sample_rate)
+        output.writeframes(pcm.tobytes())
+    return path
 
 
 class TranscriptSender:
@@ -305,11 +324,18 @@ def run_microphone_mode(args: argparse.Namespace, sender: TranscriptSender) -> N
             audio = audio_queue.get()
             if audio is None:
                 return
+            audio_path = None
+            if args.save_audio_dir is not None:
+                try:
+                    audio_path = save_diagnostic_audio(audio, args.save_audio_dir, args.sample_rate)
+                    debug(f"診断音声: {audio_path.resolve()}")
+                except Exception as exc:
+                    debug(f"警告: 診断音声を保存できません（認識は継続）: {exc}")
             try:
                 debug("文字起こし中...")
                 text = recognizer.transcribe(audio)
                 if text:
-                    debug(f"認識: {text}")
+                    debug(f"認識: {text}" + (f" [音声: {audio_path.name}]" if audio_path else ""))
                     sender.send(args.speaker, text)
                 else:
                     debug("文字起こし結果が空だったため送信しません。")
@@ -379,6 +405,8 @@ def parse_args() -> argparse.Namespace:
                      action="store_false", help="互換用: Whisper VADを無効化します。")
     parser.set_defaults(whisper_vad_filter=False)
     parser.add_argument("--show-level", action="store_true", help="入力音量をstderrに表示")
+    parser.add_argument("--save-audio-dir", type=Path, default=None,
+                        help="診断用: Whisperへ渡す発話音声を指定フォルダにWAV保存（既定OFF）")
     parser.add_argument("--send-queue-size", type=int, default=1000,
                         help="送信待ち最大件数（満杯時は新しい結果を破棄）")
 

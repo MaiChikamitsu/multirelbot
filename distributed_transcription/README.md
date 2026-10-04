@@ -159,3 +159,21 @@ python -m unittest discover -s distributed_transcription -p 'test_participant_cl
 クライアントの状態表示・警告・認識表示はすべてstderrへ出します。送信するJSONは従来どおり `speaker`・`text`・`client_time` のみです。ホストの専用保存処理は `[話者] 本文` だけを `conversaion.txt` に書き、デバッグ情報は保存しません。stdout/stderrのリダイレクト先を実験結果ファイルに指定しないでください。
 
 回帰テストは接続ログがstderrだけに存在すること、JSONのキーが上記3つだけであること、ホスト保存ファイルが認識結果だけであることを検証します。実機でもホストの `conversaion.txt` を開き、設定・音量・接続・警告が含まれないことを確認してください。第三者ライブラリ自身の表示はこのアプリの保存処理には入りません。
+
+## 認識精度の切り分け用WAV保存
+
+`--save-audio-dir ./mic_debug` を追加すると、Whisperに渡す発話区間を16-bit PCM・モノラルWAVとして保存します。既定では保存しません。ファイル名は一意で、認識結果と対応する名前をstderrに表示します。WAV保存は認識スレッドで行い、失敗しても認識と録音を継続します。会話ファイル・送信JSONには診断情報を追加しません。
+
+```bash
+python participant_client.py --speaker Bさん --host 127.0.0.1 --input-device 1 --show-level --save-audio-dir ./mic_debug
+```
+
+最初は1人だけがマイクの近くで読み、保存WAVをヘッドホンで聞いてください。小さい声、雑音、音割れ、相手の声の混入は入力側の問題を疑います。語頭・語尾の欠けは発話検出も疑います。明瞭で完全な発話音声なのに認識だけ崩れる場合はモデル・認識設定が主な疑いです。このWAVは区切った後の音声なので、未検出で捨てた部分までは確認できません。
+
+同じWAVでモデルを比較する場合は、仮想環境で次を実行できます（最初にモデルのダウンロードが必要な場合があります）。
+
+```bash
+python -c 'import sys; from faster_whisper import WhisperModel; m=WhisperModel(sys.argv[2], device="cpu", compute_type="int8"); segments,_=m.transcribe(sys.argv[1], language="ja", beam_size=5, vad_filter=False); print("".join(s.text for s in segments))' mic_debug/対象のファイル.wav small
+```
+
+同じコマンドの末尾だけ `medium` に変えると、同一音声で比較できます。再録音して比較すると入力条件まで変わるため、同じWAVを使ってください。
