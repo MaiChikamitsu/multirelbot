@@ -26,6 +26,21 @@ def _build_chat_client(endpoint: str, api_key: str, api_version: str):
 
     try:
         client = AzureOpenAI(api_version=api_version, azure_endpoint=endpoint, api_key=api_key)
+    except TypeError as exc:
+        # openai 1.35.x passes the removed ``proxies`` argument to httpx 0.28.x.
+        if "unexpected keyword argument 'proxies'" not in str(exc):
+            return None
+        try:
+            import httpx
+
+            client = AzureOpenAI(
+                api_version=api_version,
+                azure_endpoint=endpoint,
+                api_key=api_key,
+                http_client=httpx.Client(),
+            )
+        except Exception:
+            return None
     except Exception:
         return None
 
@@ -98,6 +113,15 @@ def build_chat_completion_params(
     Returns:
         chat.completions.create に渡すパラメータ辞書
     """
+    is_gpt5 = bool(
+        deployment
+        and ("gpt-5" in deployment.lower() or "gpt5" in deployment.lower())
+    )
+
+    # GPT-5 Azure deployments accept only the default temperature (1).
+    if is_gpt5:
+        kwargs.pop("temperature", None)
+
     params = {
         "model": deployment,
         "messages": messages,
@@ -106,7 +130,7 @@ def build_chat_completion_params(
 
     # GPT-5 モデルの場合は reasoning パラメータを extra_body に追加
     # ただし、enable_reasoning_param が False の場合はスキップ
-    if deployment and ("gpt-5" in deployment.lower() or "gpt5" in deployment.lower()):
+    if is_gpt5:
         # デフォルトでは無効（Azure では現在サポートされていない）
         enable_reasoning = False
         if llm_cfg:

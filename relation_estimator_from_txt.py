@@ -17,16 +17,27 @@ from azure_clients import get_azure_chat_completion_client, build_chat_completio
 from log_filtering import filter_logs_by_human_count
 
 # ========== 設定 ==========
-INPUT_FILE = "estimation_accuracy/conversation.txt"
-OUTPUT_FILE = "estimation_accuracy/relation_scores.csv"
-LLM_MODEL = "gpt-4.1"  # Noneの場合はconfig.yamlのrelation_modelを使用
+INPUT_FILE = "estimation_accuracy/conversation1.txt"
+OUTPUT_FILE = "estimation_accuracy/relation_scores_es.csv"
+# 変更前: LLM_MODEL = "gpt-4.1"
+# 変更理由: 現在のAzureリソースに同名のdeploymentがなく404になるため、.envのAZURE_MODELを使用する。
+LLM_MODEL = None
 USE_EMA = True
 GAMMA = 0.8  # 時間減衰率（過去の発話の重みを減衰）
 MAX_HISTORY_SESSIONS = 3  # 過去何セッション分の発話数を参照するか
 MAX_HISTORY_HUMAN = 9  # 人間発話数（その間のロボット発話も含む）をどれくらいLLMに入れるか
+# 変更前: ソート後の最後の参加者（A/B/CならC）が発言するたびにセッションを区切っていた。
+# 変更理由: 論文の定量評価では、話者順ではなく人間3発話ごとに推定すると定義しているため。
+K_STEP = 3  # 関係推定を行う間隔。実会話の6発話条件を再現する場合は6にする。
 DEBUG = True
-NUM_TRIALS = 5  # 各推定を繰り返す回数
+# 変更前: NUM_TRIALS = 5
+# 変更理由: 論文の定量評価では同一条件を10回繰り返して平均するため。
+NUM_TRIALS = 10
 # ==========================
+
+
+def _pair_label(pair: Tuple[str, str]) -> str:
+    return f"{pair[0]}-{pair[1]}"
 
 
 class EMAScorer:
@@ -67,8 +78,10 @@ class EMAScorer:
             self.scores[pair] = raw_score
             self.history[pair].append(session_utterance)
             if DEBUG and self.use_ema:
-                print(f"    🔢 α計算: {pair}, session={session_utterance}, past=0, α=1.00 (初回)")
-                print(f"    🔁 EMA初期化: {pair} = {raw_score:+.1f}")
+                print(
+                    f"    EMA {_pair_label(pair)}: raw={raw_score:+.1f}, "
+                    f"alpha=1.00, ema={raw_score:+.1f} (初回)"
+                )
             result = raw_score
         else:
             if self.use_ema:
@@ -89,8 +102,10 @@ class EMAScorer:
                 self.scores[pair] = updated
 
                 if DEBUG:
-                    print(f"    🔢 α計算: {pair}, session={session_utterance}, weighted_past={weighted_past:.2f}, total={weighted_total:.2f}, α={alpha:.2f}")
-                    print(f"    🔁 EMA更新: {pair} = {alpha:.2f}×{raw_score:+.1f} + {(1-alpha):.2f}×{prev:+.1f} → {updated:+.1f}")
+                    print(
+                        f"    EMA {_pair_label(pair)}: raw={raw_score:+.1f}, "
+                        f"prev={prev:+.1f}, alpha={alpha:.2f}, ema={updated:+.1f}"
+                    )
 
                 self.history[pair].append(session_utterance)
                 result = updated
@@ -99,7 +114,7 @@ class EMAScorer:
                 self.scores[pair] = raw_score
                 self.history[pair].append(session_utterance)
                 if DEBUG:
-                    print(f"    🔄 スコア更新（EMA無効）: {pair} = {raw_score:+.1f}")
+                    print(f"    score {_pair_label(pair)}: {raw_score:+.1f} (EMA無効)")
                 result = raw_score
 
         return result
@@ -166,28 +181,36 @@ def detect_participants(logs: List[Dict[str, str]]) -> List[str]:
     return sorted(list(participants))
 
 
-def split_into_rounds(logs: List[Dict[str, str]], participants: List[str]) -> List[int]:
+def split_into_rounds(
+    logs: List[Dict[str, str]],
+    participants: List[str],
+    k_step: int = 3,
+) -> List[int]:
     """
     ラウンド終了位置（推定タイミング）のインデックスリストを返す
 
-    ラウンド: 全参加者が1回ずつ発言した単位
-    3人なら3発話ごと、4人なら4発話ごとに推定
+    ロボット発話を除く人間発話が k_step 件蓄積されるごとに推定する。
+    論文の定量評価では k_step=3、実会話条件では k_step=6 を用いる。
 
     Args:
         logs: 会話ログリスト
         participants: 参加者リスト
+        k_step: 関係推定を行う人間発話間隔
 
     Returns:
         推定を行うログインデックスのリスト
     """
-    round_end_indices = []
-    num_participants = len(participants)
-    last_participant = participants[-1]  # 参加者リストの最後（CまたはD）
+    if k_step <= 0:
+        raise ValueError("k_step must be a positive integer")
 
+    round_end_indices = []
+    participant_set = set(participants)
+    human_utterance_count = 0
     for i, log in enumerate(logs):
-        speaker = log['speaker']
-        if speaker == last_participant:
-            # 最後の参加者が発言したタイミングをラウンド終了とする
+        if log['speaker'] not in participant_set:
+            continue
+        human_utterance_count += 1
+        if human_utterance_count % k_step == 0:
             round_end_indices.append(i)
 
     return round_end_indices
@@ -228,14 +251,30 @@ def estimate_relation_once(
     )
 
     prompt = f"""
-以下の会話を読み、{', '.join(participants)}の「仲の良さ（親密度）」を -1.0 〜 +1.0 の間の**実数（小数第1位まで）**で評価してください。
-0.0 は特に親しさも対立も感じない「中立的な状態」です。
-そこから -1.0（強い対立） 〜 +1.0（非常に親しい） に向けて、どれくらい離れているかを評価してください。
-出力形式を厳守し、理由・補足説明などは一切加えないでください。
+以下の会話を読み、{', '.join(participants)}の「相互の関係状態」を -1.0 〜 +1.0 の間の実数（小数第1位まで）で評価してください。
+
+評価対象は「仲の良さ」だけではなく、会話上に表れている受容・拒否・苛立ち・攻撃性・無視・協力姿勢を含む関係状態です。
+
+0.0 は、親しさも対立も明確でない中立的な状態です。
++1.0 は、強い共感・協力・好意・相手への関心が明確な状態です。
+-1.0 は、強い拒否・苛立ち・攻撃・皮肉・無視・会話継続の拒絶が明確な状態です。
+
+重要な判定ルール：
+- 片方だけが不快感・拒否・苛立ち・攻撃的反応を示している場合も、そのペアの関係は負として評価してください。
+- 相手が定型文・説明文・機械的な発話をしているだけでも、もう片方が明確に拒否・苛立ちを示していれば負として評価してください。
+- 「うるさい」「静かにして」「何を言っているの？」など、相手の発話を拒否・遮断する発言は負の関係サインです。
+- 評価対象ペアのどちらかが「うるさい」「静かにして」「もう分かった」「それはいいから」など拒否・遮断の発言をした場合、そのペアを +0.1 以上に評価してはいけません。
+- 拒否・遮断の発言が複数回ある場合、そのペアは原則として -0.5 以下にしてください。
+- 定型的な案内文や操作説明は、共感・協力・好意の証拠として扱わないでください。
+- 単に同じ話題を続けているだけでは、親しいとは評価しないでください。
+- 互いに反応していても、内容が拒否・批判・苛立ちなら正ではなく負にしてください。
 
 具体例：
--1.0 例：皮肉、批判、無視、相手を無視して話を進める
-+1.0 例：共感、褒める、相手に話題を振る、一緒に行動する
+-1.0 例：強い拒否、攻撃、侮辱、明確な苛立ち、会話継続の拒絶
+-0.5 例：軽い批判、不満、距離感、相手の発話への否定的反応
+0.0 例：事務的・定型的・関係性が読み取れない発話
++0.5 例：軽い共感、応答、関心、相手への配慮
++1.0 例：強い共感、称賛、協力、一緒に行動する提案
 
 評価対象は以下のペアです（ロボットは含みません）：
 {pair_lines}
@@ -271,17 +310,19 @@ def estimate_relation_once(
     res = client.chat.completions.create(**params)
     response_text = res.choices[0].message.content.strip()
 
-    # if DEBUG:
-    #     print(f"\n  🤖 LLM生応答:")
-    #     print(f"  {response_text}")
+    if DEBUG:
+        print(f"\n{'=' * 18} RELATION ESTIMATION {'=' * 18}")
+        print("  LLM raw:")
+        for line in response_text.splitlines():
+            print(f"    {line}")
 
     # レスポンスをパース
     scores = parse_scores_from_response(response_text, participants)
 
     if DEBUG:
-        print(f"\n  📊 パース結果:")
+        print("  parsed scores:")
         for pair, score in sorted(scores.items()):
-            print(f"    {pair}: {score:+.1f}")
+            print(f"    {_pair_label(pair)}: {score:+.1f}")
 
     return scores
 
@@ -363,6 +404,11 @@ def main():
     """メイン処理"""
     # 設定読み込み
     _CFG = config.get_config()
+    configured_relation_model = (
+        getattr(_CFG.llm, "relation_model", None)
+        or getattr(_CFG.llm, "azure_model", None)
+    )
+    effective_llm_model = LLM_MODEL or configured_relation_model
 
     if DEBUG:
         print("=" * 80)
@@ -371,11 +417,12 @@ def main():
         print(f"\n📋 設定:")
         print(f"  入力ファイル: {INPUT_FILE}")
         print(f"  出力ファイル: {OUTPUT_FILE}")
-        print(f"  LLMモデル: {LLM_MODEL if LLM_MODEL else '(config.yamlのrelation_model)'}")
+        print(f"  LLMモデル: {effective_llm_model}")
         print(f"  EMA使用: {USE_EMA}")
         print(f"  Gamma (時間減衰率): {GAMMA}")
         print(f"  履歴セッション数: {MAX_HISTORY_SESSIONS}")
         print(f"  会話履歴長: {MAX_HISTORY_HUMAN} 人間発話")
+        print(f"  セッション間隔: {K_STEP} 人間発話")
         print(f"  試行回数: {NUM_TRIALS}")
 
     # txtファイルを読み込み
@@ -400,7 +447,7 @@ def main():
             print(f"  - {pair[0]}-{pair[1]}")
 
     # ラウンド分割
-    round_end_indices = split_into_rounds(logs, participants)
+    round_end_indices = split_into_rounds(logs, participants, K_STEP)
     if DEBUG:
         print(f"\n🔄 ラウンド数: {len(round_end_indices)}")
         for idx, end_idx in enumerate(round_end_indices, 1):
@@ -475,7 +522,8 @@ def main():
         writer = csv.writer(csvfile)
 
         # ヘッダー行
-        writer.writerow(['ペア-ラウンド', '試行1', '試行2', '試行3', '試行4', '試行5', '平均'])
+        trial_headers = [f'試行{i}' for i in range(1, NUM_TRIALS + 1)]
+        writer.writerow(['ペア-ラウンド'] + trial_headers + ['平均'])
 
         # ペアごとにまとめて出力
         for pair in pairs:
@@ -485,7 +533,7 @@ def main():
             for round_idx in range(len(round_end_indices)):
                 row_label = f"{round_idx + 1}-{pair_name}"
 
-                # 5試行分のスコア
+                # NUM_TRIALS試行分のスコア
                 trial_scores = [
                     round(results[pair][trial_idx][round_idx], 1)
                     for trial_idx in range(NUM_TRIALS)
@@ -500,8 +548,8 @@ def main():
         print(f"✅ 完了: {OUTPUT_FILE} を出力しました")
         print(f"\n📊 出力形式:")
         print(f"  - A列: ペア-ラウンド（例: 1-A-B, 2-A-B, ...）")
-        print(f"  - B〜F列: 5回の試行結果（EMA適用済み）")
-        print(f"  - G列: 平均値")
+        print(f"  - 続く{NUM_TRIALS}列: 各試行結果（EMA適用済み）")
+        print(f"  - 最終列: 平均値")
 
 
 if __name__ == "__main__":

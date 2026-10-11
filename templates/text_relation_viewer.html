@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ja"><meta charset="utf-8"><title>テキストから関係推定</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:24px;background:#f4f6fa;color:#182332}button{padding:10px 20px;margin-right:8px;cursor:pointer}main{display:grid;grid-template-columns:1fr 1fr;gap:20px}section{background:white;border-radius:12px;padding:20px}svg{width:100%;height:320px}#conversation{height:660px;overflow:auto}p{line-height:1.6}#status{font-weight:bold} @media(max-width:800px){main{grid-template-columns:1fr}}
+table{border-collapse:collapse;width:100%;margin-top:12px}th,td{padding:12px 16px;border-bottom:1px solid #dce2eb;text-align:right;font-variant-numeric:tabular-nums}th:first-child{text-align:left}thead th{background:#f0f4fa}caption{text-align:left;margin-bottom:8px;color:#526174}.selected-pair{background:#edf4ff}.positive{color:#1765a7}.negative{color:#b64e24}.neutral{color:#526174}.table-wrap{overflow-x:auto}
+</style>
+<h1>テキストから関係推定：6手法比較</h1>
+<p>LLM-only・SMA（直近3回）・MAVeRDは同じLLM生スコアを使用。各手法は設定したウィンドウ内の会話を評価し、MAVeRDのEMA重みは累積発話数の差分から計算します。感情・スタンスは既存の辞書ルールです。各回1試行です。</p>
+<p>発話頻度の関係値は既存仕様で常に0です。会話の頻度だけでは好意・対立を決めず、別途「交流強度（0〜1）」を表示します。</p>
+<section><h2>ペアごとに6手法の推移を比較</h2><label>ペア <select id="pair"></select></label><svg id="comparison" viewBox="0 0 500 360"></svg><h3>推定インデックスごとの比較表</h3><div id="table" class="table-wrap"></div><p id="intensity"></p></section>
+<h2>手法別の関係図</h2><div id="methods" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px"></div>
+<p id="info"></p><button id="start">▶ 開始・再開</button><button id="pause">一時停止</button><p id="status">読み込み中</p>
+<main><div><section><h2>MAVeRDの関係図</h2><svg id="graph" viewBox="0 0 500 320"></svg><p id="values">推定待ち</p></section><section><h2>MAVeRDの推移</h2><svg id="trend" viewBox="0 0 500 320"></svg><p>横軸：人間の累積発話数 ／ 縦軸：関係値（−1〜+1）</p></section></div><section><h2>会話</h2><div id="conversation"></div></section></main>
+<script>
+const colors=['#2874c9','#db7041','#319776','#955ac5','#aa860b','#253645'];
+let latest=null;
+document.getElementById('pair').onchange=()=>{if(latest)render(latest)};
+function element(svg,tag,attrs,text){const e=document.createElementNS('http://www.w3.org/2000/svg',tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);if(text!==undefined)e.textContent=text;svg.appendChild(e);return e}
+function render(s){latest=s;
+const selector=document.getElementById('pair');if(!selector.options.length){for(let i=0;i<s.participants.length;i++)for(let j=i+1;j<s.participants.length;j++){const o=document.createElement('option');o.value=o.textContent=s.participants[i]+'–'+s.participants[j];selector.appendChild(o)}}
+const selected=selector.value,comp=document.getElementById('comparison');comp.replaceChildren();
+const maximum=Math.max(s.step,...s.history.map(h=>h.turn));
+for(const v of [-1,0,1]){const y=140-v*100;element(comp,'line',{x1:35,y1:y,x2:470,y2:y,stroke:'#ddd'});element(comp,'text',{x:0,y:y+5},v)}
+(s.methods||[]).forEach((name,i)=>{const color=colors[i%colors.length],pts=s.history.map(h=>[35+h.turn/maximum*430,140-h.methods[name][selected]*100]);element(comp,'polyline',{points:pts.map(p=>p.join(',')).join(' '),fill:'none',stroke:color,'stroke-width':2,'stroke-dasharray':i%2?'6 3':'none'});pts.forEach(([x,y])=>element(comp,'circle',{cx:x,cy:y,r:2+i*.4,fill:'white',stroke:color}));element(comp,'text',{x:25+(i%2)*240,y:285+Math.floor(i/2)*24,fill:color},name)});
+element(comp,'text',{x:35,y:260},'0');element(comp,'text',{x:455,y:260},maximum);
+const tableBox=document.getElementById('table');tableBox.replaceChildren();
+const table=document.createElement('table');tableBox.appendChild(table);
+const caption=document.createElement('caption');caption.textContent=`${selected} ／ 各推定時点の関係値（−1〜+1）。インデックスは入力ログの0始まりです。`;table.appendChild(caption);
+const head=table.createTHead().insertRow();
+for(const label of ['推定回','ログインデックス','人間発話数',...(s.methods||[])]){const th=document.createElement('th');th.scope='col';th.textContent=label;head.appendChild(th)}
+const body=table.createTBody();
+s.history.forEach((entry,index)=>{const row=body.insertRow();const label=document.createElement('th');label.scope='row';label.textContent=index+1;row.appendChild(label);
+for(const value of [entry.log_index??'—',entry.turn]){row.insertCell().textContent=value}
+for(const name of s.methods||[]){const cell=row.insertCell();const value=entry.methods[name]?.[selected];cell.textContent=value===undefined?'—':(value>0?'+':'')+value.toFixed(3);cell.className=value>0?'positive':value<0?'negative':'neutral'}});
+if(!s.history.length){const cell=body.insertRow().insertCell();cell.colSpan=3+(s.methods||[]).length;cell.textContent='最初の推定結果を待っています'}
+document.getElementById('intensity').textContent='発話頻度の交流強度：'+Object.entries(s.interaction_intensity||{}).map(([p,v])=>p+' '+v.toFixed(3)).join(' ／ ');
+const panels=document.getElementById('methods');panels.replaceChildren();for(const name of s.methods||[]){const card=document.createElement('section'),heading=document.createElement('h3');heading.textContent=name;card.appendChild(heading);const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 500 320');card.appendChild(svg);panels.appendChild(card);const points=s.participants.map((p,i)=>{const a=2*Math.PI*i/s.participants.length-Math.PI/2;return [250+125*Math.cos(a),160+115*Math.sin(a)]});for(let i=0;i<points.length;i++)for(let j=i+1;j<points.length;j++){const v=s.method_scores[name]?.[s.participants[i]+'–'+s.participants[j]];const [x,y]=points[i],[xx,yy]=points[j];element(svg,'line',{x1:x,y1:y,x2:xx,y2:yy,stroke:v===undefined?'#ddd':v>0?'#2874c9':v<0?'#db7041':'#aaa','stroke-width':v===undefined?1:2+Math.abs(v)*5});if(v!==undefined)element(svg,'text',{x:(x+xx)/2,y:(y+yy)/2-8,'text-anchor':'middle'},v.toFixed(2))}points.forEach(([x,y],i)=>{element(svg,'circle',{cx:x,cy:y,r:22,fill:'#e5eefb'});element(svg,'text',{x,y:y+5,'text-anchor':'middle'},s.participants[i])})}
+document.getElementById('info').textContent=`${s.input} ｜ ${s.step}発話ごとに推定 ｜ ウィンドウ${s.window_size}人間発話 ｜ ${s.position}/${s.total}発話 ｜ 推定${s.history.length}回`;
+document.getElementById('status').textContent=s.status;
+const box=document.getElementById('conversation');if(box.children.length!==s.conversation.length){box.replaceChildren();s.conversation.forEach(l=>{const p=document.createElement('p');p.textContent=`${l.speaker}：${l.utterance}`;box.appendChild(p)});box.scrollTop=box.scrollHeight}
+const g=document.getElementById('graph');g.replaceChildren();const points=s.participants.map((p,i)=>{let a=2*Math.PI*i/s.participants.length-Math.PI/2;return [250+125*Math.cos(a),160+115*Math.sin(a)]});
+for(let i=0;i<points.length;i++)for(let j=i+1;j<points.length;j++){const key=s.participants[i]+'–'+s.participants[j],score=s.scores[key];const [x,y]=points[i],[xx,yy]=points[j];element(g,'line',{x1:x,y1:y,x2:xx,y2:yy,stroke:score===undefined?'#ddd':score>=0?'#2874c9':'#db7041','stroke-width':score===undefined?1:2+Math.abs(score)*5});if(score!==undefined)element(g,'text',{x:(x+xx)/2,y:(y+yy)/2-8,'text-anchor':'middle',fill:'#182332'},score.toFixed(2))}
+points.forEach(([x,y],i)=>{element(g,'circle',{cx:x,cy:y,r:22,fill:'#e5eefb',stroke:'#2874c9'});element(g,'text',{x,y:y+5,'text-anchor':'middle'},s.participants[i])});
+document.getElementById('values').textContent=Object.entries(s.scores).map(([p,v])=>`${p}: ${v.toFixed(2)}`).join(' ／ ')||'推定待ち';
+const t=document.getElementById('trend');t.replaceChildren();for(const v of [-1,0,1]){const y=145-v*105;element(t,'line',{x1:40,y1:y,x2:475,y2:y,stroke:'#ddd'});element(t,'text',{x:5,y:y+5},v)}
+const max=Math.max(s.step,...s.history.map(h=>h.turn));Object.keys(s.scores).forEach((p,i)=>{const c=colors[i%colors.length],pts=s.history.map(h=>[40+h.turn/max*430,145-h.scores[p]*105]);element(t,'polyline',{points:pts.map(a=>a.join(',')).join(' '),fill:'none',stroke:c,'stroke-width':2});pts.forEach(([x,y])=>element(t,'circle',{cx:x,cy:y,r:3,fill:c}));element(t,'text',{x:40+(i%3)*145,y:285+Math.floor(i/3)*18,fill:c},p)});element(t,'text',{x:40,y:265},'0');element(t,'text',{x:460,y:265},max);
+document.getElementById('start').disabled=s.done;document.getElementById('pause').disabled=s.done}
+async function poll(){try{const r=await fetch('/state');if(!r.ok)throw Error();render(await r.json())}catch(e){document.getElementById('status').textContent='サーバに接続できません'}setTimeout(poll,500)}
+for(const action of ['start','pause'])document.getElementById(action).onclick=async()=>{const r=await fetch('/control/'+action,{method:'POST'});if(!r.ok)alert((await r.json()).error)};poll();
+</script></html>
