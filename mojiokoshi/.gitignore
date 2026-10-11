@@ -1,0 +1,10 @@
+.venv/
+.models/
+__pycache__/
+moji.txt
+*.m4a
+*.mp3
+*.wav
+*.mp4
+*.aac
+*.caf

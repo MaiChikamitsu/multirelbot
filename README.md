@@ -253,3 +253,27 @@ pytest -q
 - **robot_included**: ロボットを関係性学習に組み込むか（機能しないかも）（False）
 - **mode**: 条件切り替え
 - **rc.set_robot_count(5)**: 介入決定してから何発話、ロボットを話者識別に組み込むか（5）
+
+### テキスト再生で関係図と推移を見る
+
+```bash
+python3 text_relation_viewer.py
+```
+
+ブラウザで http://localhost:8889 を開き、「開始・再開」を押します。
+既定では `estimation_accuracy/conversation1.txt` を1秒間隔で順に表示し、
+人間5発話ごとにAzure APIで1回推定します。6手法の関係図と、ペアごとに6手法を重ねた推移を表示します。
+LLM-only / SMA / MAVeRD は各回1回のLLM生スコアを共有し、SMAは直近3回です。
+感情・スタンス・発話頻度は評価スクリプトと同じ累積会話ベースの計算です。
+発話頻度の関係値は既存仕様で0とし、交流強度を別途表示します。
+10試行の平均ではなく、1回の推定系列です。既存のCSV出力は変更しません。
+APIの応答待ち中は再生も待ちます。一時停止しても実行中の推定は完了します。
+終了後の再生はサーバをCtrl+Cで止めて起動し直してください。
+これは保存済みテキストの再生で、追記ファイルの監視ではありません。
+
+```bash
+python3 text_relation_viewer.py --input estimation_accuracy/conversation1.txt --step 3 --interval 1
+```
+
+入力は `[A] 発言` の形式です。最後に指定間隔に満たない発話が残った場合、
+その発話は表示のみ行い、追加の推定は行いません。
