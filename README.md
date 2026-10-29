@@ -257,12 +257,12 @@ pytest -q
 ### テキスト再生で関係図と推移を見る
 
 ```bash
-python3 text_relation_viewer.py
+python3 text_relation_viewer.py --input estimation_accuracy/conversation1.txt
 ```
 
 ブラウザで http://localhost:8889 を開き、「開始・再開」を押します。
-既定では `estimation_accuracy/conversation1.txt` を1秒間隔で順に表示し、
-人間5発話ごとにAzure APIで1回推定します。6手法の関係図と、ペアごとに6手法を重ねた推移を表示します。
+`--input` で指定したファイルを1秒間隔で順に表示し、
+人間3発話ごとにAzure APIで1回推定します。入力ファイルの指定は必須です。6手法の関係図と、ペアごとに6手法を重ねた推移を表示します。
 LLM-only / SMA / MAVeRD は各回1回のLLM生スコアを共有し、SMAは直近3回です。
 感情・スタンス・発話頻度は評価スクリプトと同じ累積会話ベースの計算です。
 発話頻度の関係値は既存仕様で0とし、交流強度を別途表示します。

@@ -1,0 +1,9 @@
+*
+!Dockerfile
+!requirements.txt
+!*.py
+!templates/
+!templates/**
+!static/
+!static/**
+test_*.py

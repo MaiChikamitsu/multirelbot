@@ -13,6 +13,30 @@ def _normalize(value: Any) -> Optional[str]:
 _CHAT_CLIENT_CACHE: Dict[Tuple[str, str, str], Any] = {}
 
 
+def format_azure_error(exc: Exception, llm_cfg: Any = None) -> str:
+    """Describe API failures without dumping headers or the request body."""
+    parts = [type(exc).__name__]
+    status = getattr(exc, "status_code", None)
+    if status is not None:
+        parts.append(f"HTTP {status}")
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        error = body.get("error", body)
+        if isinstance(error, dict):
+            for field in ("code", "message", "param", "innererror"):
+                value = error.get(field)
+                if value:
+                    parts.append(f"{field}={value}")
+    elif type(exc) is RuntimeError:
+        parts.append(str(exc))
+    detail = " | ".join(parts)
+    for field in ("azure_api_key", "azure_endpoint"):
+        secret = getattr(llm_cfg, field, None)
+        if isinstance(secret, str) and secret:
+            detail = detail.replace(secret, "[redacted]")
+    return detail.replace("\n", " ")[:2000]
+
+
 def _build_chat_client(endpoint: str, api_key: str, api_version: str):
     key = (endpoint, api_key, api_version)
     cached = _CHAT_CLIENT_CACHE.get(key)
@@ -21,15 +45,18 @@ def _build_chat_client(endpoint: str, api_key: str, api_version: str):
 
     try:
         from openai import AzureOpenAI  # type: ignore
-    except Exception:  # pragma: no cover - optional dependency
-        return None
+    except ImportError as exc:  # pragma: no cover - optional dependency
+        raise RuntimeError(
+            "Azure OpenAI SDKを読み込めません。サーバを起動するPythonで "
+            "python -m pip install openai を実行してください。"
+        ) from exc
 
     try:
         client = AzureOpenAI(api_version=api_version, azure_endpoint=endpoint, api_key=api_key)
     except TypeError as exc:
         # openai 1.35.x passes the removed ``proxies`` argument to httpx 0.28.x.
         if "unexpected keyword argument 'proxies'" not in str(exc):
-            return None
+            raise RuntimeError("Azure OpenAIクライアントの初期化に失敗しました。SDKのバージョンを確認してください。") from exc
         try:
             import httpx
 
@@ -39,10 +66,10 @@ def _build_chat_client(endpoint: str, api_key: str, api_version: str):
                 api_key=api_key,
                 http_client=httpx.Client(),
             )
-        except Exception:
-            return None
-    except Exception:
-        return None
+        except Exception as retry_exc:
+            raise RuntimeError("Azure OpenAI互換クライアントの初期化に失敗しました。") from retry_exc
+    except Exception as exc:
+        raise RuntimeError("Azure OpenAIクライアントの初期化に失敗しました。接続設定を確認してください。") from exc
 
     _CHAT_CLIENT_CACHE[key] = client
     return client

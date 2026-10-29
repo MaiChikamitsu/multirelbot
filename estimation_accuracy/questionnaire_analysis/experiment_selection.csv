@@ -1,0 +1,3 @@
+﻿experiment,episode,theme,respondents,run,condition,status
+muzintou_ari,conversation_muzintou_ari,無人島ー縛りあり,"1,2,3",20261019_001309_552336,main_prompt_gpt5_10trials_g08_s3_w6_step3,included
+ai_nashi,conversation_ai_nashi,AIー縛りなし,"4,5,6",20261019_154217_874494,main_prompt_gpt5_10trials_g08_s3_w6_step3,included

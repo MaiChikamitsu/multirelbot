@@ -1,0 +1,27 @@
+<!doctype html><html lang="ja"><meta charset="utf-8"><title>分析ファイル一覧</title><style>body{font:16px system-ui;color:#182335;max-width:1000px;margin:40px auto;padding:0 20px}article{padding:20px;margin:18px 0;border:1px solid #dce2ea;border-radius:10px;background:#f7f9fc}a{color:#2457bb}p{line-height:1.6}</style><h1>分析ファイル一覧</h1><p><a href="overall_report.html">全実験の総合MAE・変化量MAEを見る →</a></p><p>見たい実行ファイルを選んでください。集計表・グラフ・対応状況は、実行ごとの別ページに表示します。</p><p><a href="correlation_report.html">LLM-only・LLM + SMA・MAVeRDの相関係数をまとめて見る →</a></p><p><a href="correlation_report.html#combined-comparison">AI＋無人島を合わせた3手法の散布図・相関・MAEを見る →</a></p><p><a href="correlation_report.html#scatter-correlations">システムと3グループの相関の散布図（全ペアまとめ）を見る →</a></p><p><a href="human_group_report.html">文字版・動画版・実験参加者版の違い・相関・ばらつきを見る →</a></p><p id="management-status">除外・復元ボタンを使うには python3 serve_relation_reports.py --config analysis_config.example.json で開いてください。元の推定ファイルは削除しません。</p><details><summary>除外済みの実行（復元できます）</summary><p>muzintou_ari / 20261018_181856_698772 <button class="run-action" disabled data-experiment="muzintou_ari" data-run="20261018_181856_698772" data-action="restore">一覧へ戻す</button></p><p>muzintou_ari / 20261018_182431_291110 <button class="run-action" disabled data-experiment="muzintou_ari" data-run="20261018_182431_291110" data-action="restore">一覧へ戻す</button></p><p>muzintou_ari / 20261018_234042_822444 <button class="run-action" disabled data-experiment="muzintou_ari" data-run="20261018_234042_822444" data-action="restore">一覧へ戻す</button></p></details><script>
+(async()=>{
+ if(location.protocol!=='http:')return;
+ const status=document.getElementById('management-status');
+ try{
+  const response=await fetch('/api/status',{cache:'no-store'});
+  if(!response.ok)return;
+  const state=await response.json();
+  status.textContent='除外すると一覧・総合評価を再集計します。元の推定ファイルは保持し、除外済みの欄から復元できます。';
+  document.querySelectorAll('.run-action').forEach(button=>{
+   button.disabled=false;
+   button.onclick=async()=>{
+    const restoring=button.dataset.action==='restore';
+    if(!confirm(button.dataset.experiment+' / '+button.dataset.run+' を'+(restoring?'復元':'一覧と総合評価から除外')+'しますか？'))return;
+    document.querySelectorAll('.run-action').forEach(b=>b.disabled=true);
+    status.textContent='再集計しています…';
+    try{
+     const r=await fetch('/api/run-visibility',{method:'POST',headers:{'Content-Type':'application/json','X-Report-Token':state.token},body:JSON.stringify({experiment:button.dataset.experiment,run:button.dataset.run,action:button.dataset.action})});
+     const result=await r.json();
+     if(!r.ok)throw new Error(result.error||'更新できませんでした');
+     location.reload();
+    }catch(error){status.textContent=error.message;document.querySelectorAll('.run-action').forEach(b=>b.disabled=false);}
+   };
+  });
+ }catch(error){}
+})();
+</script><article><h2>ai_nashi</h2><p>実行：20261019_154217_874494 ／ 保存済み23時点</p><a href="run_reports/ai_nashi_20261019_154217_874494_17968194/report.html">このファイルの分析を開く →</a><p><button class="run-action" disabled data-experiment="ai_nashi" data-run="20261019_154217_874494" data-action="exclude">一覧・総合評価から除外</button></p></article><article><h2>muzintou_ari</h2><p>実行：20261019_001309_552336 ／ 保存済み41時点</p><a href="run_reports/muzintou_ari_20261019_001309_552336_33547038/report.html">このファイルの分析を開く →</a><p><button class="run-action" disabled data-experiment="muzintou_ari" data-run="20261019_001309_552336" data-action="exclude">一覧・総合評価から除外</button></p></article></html>

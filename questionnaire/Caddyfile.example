@@ -1,0 +1,4 @@
+# 実際のドメインへ変更。公開サーバーへDNSを向けてからCaddyで起動する。
+questionnaire.example.org {
+    reverse_proxy 127.0.0.1:8892
+}

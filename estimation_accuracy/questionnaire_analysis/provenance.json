@@ -1,0 +1,138 @@
+{
+  "config": {
+    "output": "estimation_accuracy/questionnaire_analysis",
+    "observer_surveys": [
+      {
+        "experiment": "ai_nashi",
+        "label": "動画版",
+        "theme": "AIー縛りなし",
+        "survey": "/Users/kinmai/Downloads/【動画版回答】AIー縛りなし.xlsx"
+      },
+      {
+        "experiment": "muzintou_ari",
+        "label": "動画版",
+        "theme": "無人島ー縛りあり",
+        "survey": "/Users/kinmai/Downloads/【動画版回答】無人島ー縛りあり.xlsx"
+      },
+      {
+        "experiment": "ai_nashi",
+        "label": "文字版",
+        "theme": "AIー縛りなし",
+        "survey": "/Users/kinmai/Downloads/【文字版回答】AIー縛りなし.xlsx"
+      },
+      {
+        "experiment": "muzintou_ari",
+        "label": "文字版",
+        "theme": "無人島ー縛りあり",
+        "survey": "/Users/kinmai/Downloads/【文字版回答】無人島ー縛りあり.xlsx"
+      }
+    ],
+    "experiments": [
+      {
+        "id": "muzintou_ari",
+        "survey": "/Users/kinmai/Downloads/【修正版】（直後）予備実験アンケート （回答） (1).xlsx",
+        "theme": "無人島ー縛りあり",
+        "episode": "conversation_muzintou_ari",
+        "predictions": "estimation_accuracy/viewer_runs/*/predictions.csv",
+        "index_offset": 0,
+        "respondent_ids": [
+          "1",
+          "2",
+          "3"
+        ],
+        "roles": {
+          "A": "1",
+          "B": "2",
+          "C": "3"
+        },
+        "aggregate_run": "20261019_001309_552336",
+        "condition_id": "main_prompt_gpt5_10trials_g08_s3_w6_step3"
+      },
+      {
+        "id": "ai_nashi",
+        "enabled": true,
+        "survey": "/Users/kinmai/Downloads/【修正版】（直後）予備実験アンケート （回答） (1).xlsx",
+        "theme": "AIー縛りなし",
+        "episode": "conversation_ai_nashi",
+        "predictions": "estimation_accuracy/viewer_runs/*/predictions.csv",
+        "respondent_ids": [
+          "4",
+          "5",
+          "6"
+        ],
+        "roles": {
+          "A": "4",
+          "B": "5",
+          "C": "6"
+        },
+        "aggregate_run": "20261019_154217_874494",
+        "condition_id": "main_prompt_gpt5_10trials_g08_s3_w6_step3",
+        "index_offset": 0
+      }
+    ],
+    "_excluded_runs": [
+      {
+        "experiment": "muzintou_ari",
+        "run": "20261018_181856_698772"
+      },
+      {
+        "experiment": "muzintou_ari",
+        "run": "20261018_182431_291110"
+      },
+      {
+        "experiment": "muzintou_ari",
+        "run": "20261018_234042_822444"
+      }
+    ]
+  },
+  "sources": [
+    {
+      "path": "/Users/kinmai/Desktop/multirelbot/estimation_accuracy/viewer_runs/20261018_181856_698772/predictions.csv",
+      "sha256": "27f384fec43744e54c766be4abaf7f9fb2c889615d4507aee1a2863a2ba92de0"
+    },
+    {
+      "path": "/Users/kinmai/Desktop/multirelbot/estimation_accuracy/viewer_runs/20261018_182431_291110/predictions.csv",
+      "sha256": "ac2e86667d66665e51f50266311761ee374c85b9cdd95db2467b44e91550bc77"
+    },
+    {
+      "path": "/Users/kinmai/Desktop/multirelbot/estimation_accuracy/viewer_runs/20261018_234042_822444/predictions.csv",
+      "sha256": "c75682e395f15a2713d7dae0a8429a6c6fc1a96ea0e955562fd08d1a3c9a64f0"
+    },
+    {
+      "path": "/Users/kinmai/Desktop/multirelbot/estimation_accuracy/viewer_runs/20261019_001309_552336/predictions.csv",
+      "sha256": "7c2efeb6361f38cbdd08d8e9ec0fec9fcfc3ec796f7166dc5a3cf35cd35ad858"
+    },
+    {
+      "path": "/Users/kinmai/Desktop/multirelbot/estimation_accuracy/viewer_runs/20261019_154217_874494/predictions.csv",
+      "sha256": "c8f6b1701a1bd4b4a7b50a386c8803f43e9af2a88c1ee560ef543c543294f5be"
+    },
+    {
+      "path": "/Users/kinmai/Downloads/【修正版】（直後）予備実験アンケート （回答） (1).xlsx",
+      "sha256": "d8eb743d0f37116faeda1b90500d1537351443892e6da7259a6a408bb6067a02"
+    },
+    {
+      "path": "/Users/kinmai/Desktop/multirelbot/estimation_accuracy/viewer_runs/20261018_181856_698772/predictions.csv",
+      "sha256": "27f384fec43744e54c766be4abaf7f9fb2c889615d4507aee1a2863a2ba92de0"
+    },
+    {
+      "path": "/Users/kinmai/Desktop/multirelbot/estimation_accuracy/viewer_runs/20261018_182431_291110/predictions.csv",
+      "sha256": "ac2e86667d66665e51f50266311761ee374c85b9cdd95db2467b44e91550bc77"
+    },
+    {
+      "path": "/Users/kinmai/Desktop/multirelbot/estimation_accuracy/viewer_runs/20261018_234042_822444/predictions.csv",
+      "sha256": "c75682e395f15a2713d7dae0a8429a6c6fc1a96ea0e955562fd08d1a3c9a64f0"
+    },
+    {
+      "path": "/Users/kinmai/Desktop/multirelbot/estimation_accuracy/viewer_runs/20261019_001309_552336/predictions.csv",
+      "sha256": "7c2efeb6361f38cbdd08d8e9ec0fec9fcfc3ec796f7166dc5a3cf35cd35ad858"
+    },
+    {
+      "path": "/Users/kinmai/Desktop/multirelbot/estimation_accuracy/viewer_runs/20261019_154217_874494/predictions.csv",
+      "sha256": "c8f6b1701a1bd4b4a7b50a386c8803f43e9af2a88c1ee560ef543c543294f5be"
+    },
+    {
+      "path": "/Users/kinmai/Downloads/【修正版】（直後）予備実験アンケート （回答） (1).xlsx",
+      "sha256": "d8eb743d0f37116faeda1b90500d1537351443892e6da7259a6a408bb6067a02"
+    }
+  ]
+}

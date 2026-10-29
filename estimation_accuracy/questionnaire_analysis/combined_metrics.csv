@@ -1,0 +1,19 @@
+﻿experiment,run,method,group,pair,target,label,measure,n,pearson,spearman,mae,source_runs
+combined_ai_muzintou,selected_runs,LLM + SMA,experiment,all,mean,このグループの平均,level,192,0.07868559774731224,0.05132510279618315,0.29974826388888887,ai_nashi:20261019_154217_874494;muzintou_ari:20261019_001309_552336
+combined_ai_muzintou,selected_runs,LLM + SMA,experiment,all,mean,このグループの平均,change,186,-0.00735615408856216,-0.01605500668461794,0.18623655913978496,ai_nashi:20261019_154217_874494;muzintou_ari:20261019_001309_552336
+combined_ai_muzintou,selected_runs,LLM + SMA,text,all,mean,このグループの平均,level,192,0.140917555056546,0.14433248763956444,0.21463541666666666,ai_nashi:20261019_154217_874494;muzintou_ari:20261019_001309_552336
+combined_ai_muzintou,selected_runs,LLM + SMA,text,all,mean,このグループの平均,change,186,0.19560149511695873,0.21047987939794155,0.08275985663082437,ai_nashi:20261019_154217_874494;muzintou_ari:20261019_001309_552336
+combined_ai_muzintou,selected_runs,LLM + SMA,video,all,mean,このグループの平均,level,192,0.1504853456565503,0.14389107799378018,0.24016493055555554,ai_nashi:20261019_154217_874494;muzintou_ari:20261019_001309_552336
+combined_ai_muzintou,selected_runs,LLM + SMA,video,all,mean,このグループの平均,change,186,0.026424785177878125,0.06312747207932565,0.12193548387096774,ai_nashi:20261019_154217_874494;muzintou_ari:20261019_001309_552336
+combined_ai_muzintou,selected_runs,LLM-only,experiment,all,mean,このグループの平均,level,192,0.08675610291730262,0.06612868077359296,0.31472222222222224,ai_nashi:20261019_154217_874494;muzintou_ari:20261019_001309_552336
+combined_ai_muzintou,selected_runs,LLM-only,experiment,all,mean,このグループの平均,change,186,0.1097305236784999,0.14689858942153583,0.21611111111111111,ai_nashi:20261019_154217_874494;muzintou_ari:20261019_001309_552336
+combined_ai_muzintou,selected_runs,LLM-only,text,all,mean,このグループの平均,level,192,0.10413194623560112,0.10195894426757694,0.244140625,ai_nashi:20261019_154217_874494;muzintou_ari:20261019_001309_552336
+combined_ai_muzintou,selected_runs,LLM-only,text,all,mean,このグループの平均,change,186,0.24858629800904736,0.25210205923064244,0.14693548387096775,ai_nashi:20261019_154217_874494;muzintou_ari:20261019_001309_552336
+combined_ai_muzintou,selected_runs,LLM-only,video,all,mean,このグループの平均,level,192,0.102028460567661,0.1147344218946345,0.2671875,ai_nashi:20261019_154217_874494;muzintou_ari:20261019_001309_552336
+combined_ai_muzintou,selected_runs,LLM-only,video,all,mean,このグループの平均,change,186,0.023963198461717093,0.023300364761848942,0.18059139784946238,ai_nashi:20261019_154217_874494;muzintou_ari:20261019_001309_552336
+combined_ai_muzintou,selected_runs,MAVeRD,experiment,all,mean,このグループの平均,level,192,0.15328736057555747,0.11957245970221496,0.304695428895018,ai_nashi:20261019_154217_874494;muzintou_ari:20261019_001309_552336
+combined_ai_muzintou,selected_runs,MAVeRD,experiment,all,mean,このグループの平均,change,186,0.09533181525710491,0.20416282873660752,0.1785904459371917,ai_nashi:20261019_154217_874494;muzintou_ari:20261019_001309_552336
+combined_ai_muzintou,selected_runs,MAVeRD,text,all,mean,このグループの平均,level,192,0.24599752451619708,0.27467578452855784,0.22135281947484275,ai_nashi:20261019_154217_874494;muzintou_ari:20261019_001309_552336
+combined_ai_muzintou,selected_runs,MAVeRD,text,all,mean,このグループの平均,change,186,0.18660410643638517,0.24583872213945468,0.07600569310954951,ai_nashi:20261019_154217_874494;muzintou_ari:20261019_001309_552336
+combined_ai_muzintou,selected_runs,MAVeRD,video,all,mean,このグループの平均,level,192,0.18922973500910076,0.17794468698994578,0.24080445880584966,ai_nashi:20261019_154217_874494;muzintou_ari:20261019_001309_552336
+combined_ai_muzintou,selected_runs,MAVeRD,video,all,mean,このグループの平均,change,186,0.007704475223262699,0.11418370122264063,0.1181091264132694,ai_nashi:20261019_154217_874494;muzintou_ari:20261019_001309_552336

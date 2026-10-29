@@ -1,0 +1,18 @@
+{
+  "input": "/Users/kinmai/Desktop/multirelbot/estimation_accuracy/conversation_muzintou_ari.txt",
+  "input_sha256": "0622231fb00ec5bfa2373ae1cc89337f427d64ed935b82256c889332edcd0d00",
+  "step": 3,
+  "window_size": 6,
+  "sma_window": 3,
+  "num_trials": 10,
+  "aggregation": "mean across independent trials after per-trial smoothing",
+  "gamma": 0.8,
+  "max_history_sessions": 3,
+  "model": "gpt-5-chat",
+  "relation_temperature": 0.3,
+  "score_range": [
+    -1,
+    1
+  ],
+  "index_definition": "Round=turn/step; log_index is zero-based parsed conversation position; no recording time is available"
+}

@@ -1,0 +1,18 @@
+{
+  "input": "/Users/kinmai/Desktop/multirelbot/estimation_accuracy/conversation_ai_nashi.txt",
+  "input_sha256": "98504959c98bf7d2d52804771a989941b5d898d223ff12ff7517c9193a7851fa",
+  "step": 3,
+  "window_size": 6,
+  "sma_window": 3,
+  "num_trials": 10,
+  "aggregation": "mean across independent trials after per-trial smoothing",
+  "gamma": 0.8,
+  "max_history_sessions": 3,
+  "model": "gpt-5-chat",
+  "relation_temperature": 0.3,
+  "score_range": [
+    -1,
+    1
+  ],
+  "index_definition": "Round=turn/step; log_index is zero-based parsed conversation position; no recording time is available"
+}

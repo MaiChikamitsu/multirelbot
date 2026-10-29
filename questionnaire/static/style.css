@@ -1,0 +1,42 @@
+:root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#203347;background:#f0f4f7;font-size:16px}*{box-sizing:border-box}body{margin:0}main{max-width:900px;margin:40px auto;padding:0 20px}header{padding:10px 0 24px}h1{font-size:clamp(1.6rem,4vw,2.1rem);line-height:1.4}h2{font-size:1.3rem}.eyebrow{color:#24716a;letter-spacing:.12em;font-size:.8rem;font-weight:700}p{line-height:1.8}section{padding:28px;background:white;border:1px solid #dce6ed;border-radius:16px;box-shadow:0 10px 35px #15334c08}label{display:block;font-weight:600}input,textarea{display:block;width:100%;font:inherit;margin:10px 0 20px;border:1px solid #a8b9c8;border-radius:8px;padding:13px;background:#fff}button{font:inherit;font-weight:600;background:#196d65;border:0;border-radius:8px;color:white;padding:13px 20px;cursor:pointer}button:disabled{opacity:.4;cursor:not-allowed}.quiet{background:#eef4f7;color:#244455;border:1px solid #d6e2eb;font-size:.9rem}.identity{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:22px}progress{width:100%;height:10px;margin:12px 0 24px;accent-color:#196d65}video{width:100%;max-height:470px;background:#111;border-radius:9px}.ratings{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.hint,footer,#video-note{color:#526b7f;font-size:.9rem}footer{margin:25px 0}#message:not(:empty){padding:14px;border-radius:8px;background:#fff0df;color:#713b13}[hidden]{display:none!important}:focus-visible{outline:3px solid #df9f3b;outline-offset:3px}@media(max-width:520px){main{margin:20px auto;padding:0 12px}section{padding:18px}.ratings{grid-template-columns:1fr;gap:0}}
+fieldset{border:0;padding:0;margin:12px 0}legend{font-weight:700;font-size:1.1rem}.theme-choice{display:flex;align-items:center;gap:14px;padding:13px 8px;font-weight:500;cursor:pointer}.theme-choice input{width:22px;height:22px;margin:0;accent-color:#196d65}select{display:block;width:100%;font:inherit;margin:12px 0;padding:12px;border:1px solid #a8b9c8;border-radius:8px}blockquote{margin:16px 0;padding:18px 22px;border-left:4px solid #196d65;background:#f0f6f4;line-height:1.9}.instructions li{line-height:1.9;margin:10px 0}.playback-actions{display:flex;flex-wrap:wrap;gap:10px}#review-controls{margin:18px 0;padding:18px;background:#eef5f8;border-radius:10px}#review-seek{padding:0;accent-color:#196d65}output{font-variant-numeric:tabular-nums}.criteria{padding:15px;background:#f5f8fa;border-radius:8px;margin:22px 0}.criteria summary{cursor:pointer;font-weight:600}
+
+.inline-help{margin:18px 0;padding:16px 18px;border:1px solid #d6e2eb;border-radius:10px;background:#f5f9fa}.inline-help summary{cursor:pointer;font-weight:700;color:#24574f}.inline-help[open] summary{margin-bottom:14px}.inline-help li{line-height:1.9;margin:10px 0}.inline-help ol{padding-left:24px}.rating-instructions{margin:18px 0;padding:18px 22px;background:#f0f6f4;border-left:4px solid #196d65;border-radius:0 8px 8px 0}.rating-instructions p:first-child{margin-top:0}.rating-instructions li{line-height:1.9;margin:8px 0}.rating-instructions ul{padding-left:22px;margin-bottom:0}
+
+#text-conversation p{white-space:pre-wrap;overflow-wrap:anywhere}#current-turns{padding:12px 20px;background:#f0f6f4;border-left:4px solid #196d65;border-radius:8px}#recent-turns{padding:0 12px;color:#526476}#text-conversation h4{margin-bottom:6px}
+
+.conversation-script{border:1px solid #bdcdd5;border-radius:12px;padding:20px;background:#fff;margin:18px 0 28px}.script-title{margin-top:0}.script-label{font-weight:700;color:#526476;border-top:1px solid #dde6eb;padding-top:16px;margin-bottom:8px}#recent-turns{color:#203347;padding:0 12px}.current-script{border:2px solid #196d65;border-radius:10px;background:#f0f6f4;padding:16px;margin-top:20px}.current-script>h3{color:#196d65;margin:0 0 12px;font-size:1.05rem}#current-turns{border:0;background:transparent;border-radius:0;padding:0 8px}@media(max-width:520px){.conversation-script{padding:14px}.current-script{padding:12px}}
+
+#recent-turns,#older-turns{font-size:.9rem;line-height:1.8}
+
+/* Keep the transcript and ratings close together on the text questionnaire. */
+body[data-mode="text"] main{max-width:1200px;margin:16px auto}
+body[data-mode="text"] header{padding:0 0 8px}
+body[data-mode="text"] header h1{font-size:1.35rem;margin:4px 0}
+body[data-mode="text"] header>p,body[data-mode="text"] header .eyebrow,body[data-mode="text"] footer{display:none}
+body[data-mode="text"] section{padding:18px}
+body[data-mode="text"] .identity{margin-bottom:8px}
+body[data-mode="text"] #theme-help{margin:8px 0;padding:10px 14px}
+body[data-mode="text"] progress{height:6px;margin:6px 0 10px}
+body[data-mode="text"] #previous{padding:8px 12px}
+body[data-mode="text"] #previous+.hint{display:none}
+body[data-mode="text"] #segment-title{font-size:1.1rem;margin:10px 0}
+body[data-mode="text"] .conversation-script{padding:12px;margin:0}
+body[data-mode="text"] #text-conversation p{line-height:1.6;margin:9px 0}
+body[data-mode="text"] .script-label{border:0;padding:0;margin-top:0!important;font-size:.85rem}
+body[data-mode="text"] #recent-turns{padding:0 6px;font-size:.85rem}
+body[data-mode="text"] .current-script{padding:10px;margin-top:12px}
+body[data-mode="text"] .current-script>h3{font-size:.95rem;margin-bottom:6px}
+body[data-mode="text"] #current-turns{padding:0 4px}
+body[data-mode="text"] #older-conversation{padding:9px 12px;margin:0 0 10px}
+body[data-mode="text"] #answer-form h3{font-size:1.05rem;margin:0 0 10px}
+body[data-mode="text"] .rating-help{margin:8px 0;padding:10px 12px}
+body[data-mode="text"] #answer-form>.hint{font-size:.8rem;margin:8px 0}
+body[data-mode="text"] #answer-form>.ratings{gap:10px;grid-template-columns:repeat(3,1fr)}
+body[data-mode="text"] .ratings input{padding:10px 8px;margin:6px 0 12px;min-width:0}
+body[data-mode="text"] #answer-form>p:last-of-type{display:none}
+body[data-mode="text"] #next{width:100%;padding:11px}
+body[data-mode="text"] #answer-form{margin-top:16px}
+@media(min-width:950px){body[data-mode="text"] #segment{display:grid;grid-template-columns:minmax(0,1fr) 320px;column-gap:20px;align-items:start}body[data-mode="text"] #previous,body[data-mode="text"] #segment-title{grid-column:1/-1;justify-self:start}body[data-mode="text"] #text-conversation{grid-column:1;grid-row:4}body[data-mode="text"] #answer-form{grid-column:2;grid-row:4;position:sticky;top:16px;margin-top:0}}
+
+.theme-description p{white-space:pre-line;line-height:1.8}

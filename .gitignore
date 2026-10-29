@@ -10,3 +10,5 @@ tmp
 skilful-album-424518-d2-46b828fb306a.json
 communityEnv/
 __pycache__/
+
+distributed_transcription/.venv.local-backup-*/
